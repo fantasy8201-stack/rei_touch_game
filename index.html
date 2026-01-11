@@ -2,10 +2,9 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>曉月 零的觀測室 - Gyroscope Ver.</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>曉月 零的觀測室 - Gyro & Zoom Ver.</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Face API & TensorFlow -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
@@ -20,9 +19,9 @@
             overflow: hidden;
             user-select: none;
             transition: background-color 1s;
+            touch-action: none; /* Disable default browser zoom/pan */
         }
 
-        /* Error Overlay */
         #error-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -46,27 +45,12 @@
             white-space: pre-wrap;
         }
 
-        /* --- Passion Mode Styles --- */
-        body.passion-mode {
-            background-color: #1a0005;
-        }
-        body.passion-mode .rei-overlay-gradient {
-            background: radial-gradient(circle, rgba(50,0,0,0.1) 0%, rgba(30,0,0,0.6) 80%, rgba(20,0,0,0.9) 100%);
-        }
-        body.passion-mode .status-bar {
-            box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
-            border-color: #ff0000;
-        }
-        body.passion-mode #score-bar {
-            background: linear-gradient(to top, #500000, #ff0000);
-            box-shadow: 0 0 10px #ff0000;
-        }
-        body.passion-mode #message-box {
-            border-top: 2px solid #ff0000;
-            background: linear-gradient(180deg, rgba(20, 0, 0, 0.95) 0%, rgba(40, 0, 0, 0.98) 100%);
-        }
+        body.passion-mode { background-color: #1a0005; }
+        body.passion-mode .rei-overlay-gradient { background: radial-gradient(circle, rgba(50,0,0,0.1) 0%, rgba(30,0,0,0.6) 80%, rgba(20,0,0,0.9) 100%); }
+        body.passion-mode .status-bar { box-shadow: 0 0 20px rgba(255, 0, 0, 0.6); border-color: #ff0000; }
+        body.passion-mode #score-bar { background: linear-gradient(to top, #500000, #ff0000); box-shadow: 0 0 10px #ff0000; }
+        body.passion-mode #message-box { border-top: 2px solid #ff0000; background: linear-gradient(180deg, rgba(20, 0, 0, 0.95) 0%, rgba(40, 0, 0, 0.98) 100%); }
 
-        /* --- Layout & Effects --- */
         .rei-overlay-gradient {
             background: radial-gradient(circle, rgba(26,26,46,0) 0%, rgba(13,13,13,0.4) 90%, rgba(0,0,0,0.8) 100%);
             pointer-events: none;
@@ -97,9 +81,8 @@
             left: 0;
             min-width: 110%; 
             min-height: 110%;
-            /* Smooth transition for gyro */
-            transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            transform-origin: 0 0;
+            transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            transform-origin: 0 0; /* Scale from top-left to make math easier */
         }
 
         #rei-image {
@@ -112,13 +95,9 @@
             transition: filter 0.4s ease;
         }
 
-        /* --- Hitboxes & SVG --- */
         #hitbox-svg {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             z-index: 20;
             pointer-events: auto; 
         }
@@ -131,39 +110,12 @@
             vector-effect: non-scaling-stroke; 
         }
 
-        /* Game Mode: Hidden by default */
-        .mode-game polygon { 
-            pointer-events: all; 
-            stroke: none;
-            fill: transparent;
-        }
-        /* Game Mode: Show Outlines if toggled */
-        .mode-game.show-outlines polygon {
-            stroke: rgba(255, 255, 255, 0.15);
-            stroke-width: 1px;
-            stroke-dasharray: 2;
-        }
-        .mode-game.show-outlines polygon:active {
-            fill: rgba(255, 0, 127, 0.1);
-            stroke: rgba(255, 0, 127, 0.5);
-            stroke-width: 2px;
-            stroke-dasharray: 0;
-        }
+        .mode-game polygon { pointer-events: all; stroke: none; fill: transparent; }
+        .mode-game.show-outlines polygon { stroke: rgba(255, 255, 255, 0.15); stroke-width: 1px; stroke-dasharray: 2; }
+        .mode-game.show-outlines polygon:active { fill: rgba(255, 0, 127, 0.1); stroke: rgba(255, 0, 127, 0.5); stroke-width: 2px; stroke-dasharray: 0; }
 
-        /* Edit Mode */
-        .mode-edit polygon {
-            stroke: rgba(255, 0, 127, 0.5);
-            stroke-width: 1px;
-            stroke-dasharray: 4;
-            fill: rgba(255, 0, 127, 0.05);
-            cursor: move;
-        }
-        .mode-edit polygon.selected {
-            stroke: #00ffea;
-            stroke-width: 2px;
-            stroke-dasharray: 0;
-            fill: rgba(0, 255, 234, 0.1);
-        }
+        .mode-edit polygon { stroke: rgba(255, 0, 127, 0.5); stroke-width: 1px; stroke-dasharray: 4; fill: rgba(255, 0, 127, 0.05); cursor: move; }
+        .mode-edit polygon.selected { stroke: #00ffea; stroke-width: 2px; stroke-dasharray: 0; fill: rgba(0, 255, 234, 0.1); }
 
         .scan-flash { animation: flash-poly 1s ease-out forwards; }
         @keyframes flash-poly {
@@ -172,31 +124,17 @@
         }
 
         .vertex-handle {
-            width: 12px;
-            height: 12px;
-            background: #00ffea;
-            border: 1px solid #000;
-            position: absolute;
-            transform: translate(-50%, -50%);
-            border-radius: 50%;
-            cursor: pointer;
-            z-index: 50; 
-            display: none;
-            pointer-events: auto; 
+            width: 12px; height: 12px;
+            background: #00ffea; border: 1px solid #000;
+            position: absolute; transform: translate(-50%, -50%);
+            border-radius: 50%; cursor: pointer;
+            z-index: 50; display: none; pointer-events: auto; 
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
         .mode-edit .vertex-handle { display: block; }
         
-        #vertex-layer {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 30;
-        }
+        #vertex-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
 
-        /* --- UI Elements --- */
         #message-box {
             background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 10, 20, 0.98) 100%);
             border-top: 2px solid #4b0082;
@@ -218,219 +156,83 @@
             100% { transform: translate(0, 0); filter: none;}
         }
 
-        /* --- Admin Panel --- */
         .admin-panel {
-            position: fixed;
-            top: 50%;
-            left: 10px; 
-            transform: translateY(-50%);
-            background: rgba(0, 0, 0, 0.95);
-            border: 1px solid #4b0082;
-            padding: 15px;
-            border-radius: 10px;
-            z-index: 999; 
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-            width: 240px;
-            max-height: 80vh;
-            overflow-y: auto;
+            position: fixed; top: 50%; left: 10px; transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.95); border: 1px solid #4b0082;
+            padding: 15px; border-radius: 10px; z-index: 999; 
+            display: none; flex-direction: column; gap: 10px;
+            width: 240px; max-height: 80vh; overflow-y: auto;
             box-shadow: 0 0 20px rgba(75, 0, 130, 0.5);
             transition: width 0.3s, height 0.3s, padding 0.3s, opacity 0.3s;
         }
-        
         .admin-panel.active { display: flex; }
-
         .admin-panel.minimized {
-            width: 40px;
-            height: 40px;
-            padding: 0;
-            overflow: hidden;
-            border-radius: 50%;
-            cursor: pointer;
-            justify-content: center;
-            align-items: center;
-            border-color: #00ffea;
-            box-shadow: 0 0 10px #00ffea;
+            width: 40px; height: 40px; padding: 0; overflow: hidden;
+            border-radius: 50%; cursor: pointer; justify-content: center; alignItems: center;
+            border-color: #00ffea; box-shadow: 0 0 10px #00ffea;
         }
-        
         .admin-panel.minimized > * { display: none; }
-        .admin-panel.minimized::after {
-            content: "⚙";
-            color: #00ffea;
-            font-size: 20px;
-            display: block;
-            animation: spin 4s linear infinite;
-        }
+        .admin-panel.minimized::after { content: "⚙"; color: #00ffea; font-size: 20px; display: block; animation: spin 4s linear infinite; }
 
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #444;
-            padding-bottom: 5px;
-            margin-bottom: 5px;
-        }
-
-        .btn-minimize {
-            background: transparent;
-            border: none;
-            color: #a855f7;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 0 5px;
-        }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 5px; }
+        .btn-minimize { background: transparent; border: none; color: #a855f7; cursor: pointer; font-size: 14px; padding: 0 5px; }
         .btn-minimize:hover { color: white; }
 
         .btn-style {
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid #4b0082;
-            color: #a855f7;
-            padding: 6px 12px;
-            font-size: 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: 0.2s;
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #4b0082; color: #a855f7;
+            padding: 6px 12px; font-size: 10px; border-radius: 4px; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 1px; transition: 0.2s;
         }
         .btn-style:hover { background: #4b0082; color: white; }
-        .btn-style.active {
-            border-color: #00ffea;
-            color: #00ffea;
-            box-shadow: 0 0 10px rgba(0, 255, 234, 0.5);
-        }
+        .btn-style.active { border-color: #00ffea; color: #00ffea; box-shadow: 0 0 10px rgba(0, 255, 234, 0.5); }
         
         .admin-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #ddd;
-            padding: 5px 10px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: 0.2s;
-            text-align: center;
+            background: #1a1a1a; border: 1px solid #333; color: #ddd;
+            padding: 5px 10px; font-size: 11px; cursor: pointer;
+            transition: 0.2s; text-align: center;
         }
         .admin-btn:hover { background: #4b0082; color: #fff; }
         .admin-btn.danger:hover { background: #8b0000; border-color: #8b0000; }
-        .admin-btn.special {
-            background: #2e1a47;
-            border-color: #8a2be2;
-            color: #e0b0ff;
-        }
-        .admin-btn.special:hover {
-            background: #8a2be2;
-            color: #fff;
-            box-shadow: 0 0 10px #8a2be2;
-        }
+        .admin-btn.special { background: #2e1a47; border-color: #8a2be2; color: #e0b0ff; }
+        .admin-btn.special:hover { background: #8a2be2; color: #fff; box-shadow: 0 0 10px #8a2be2; }
 
-        .top-controls {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            display: flex;
-            gap: 10px;
-            z-index: 1000; 
-        }
-        
-        .lang-switch {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 1000;
-        }
-        
-        .writing-vertical {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-        }
+        .top-controls { position: fixed; top: 10px; left: 10px; display: flex; gap: 10px; z-index: 1000; }
+        .lang-switch { position: fixed; top: 10px; right: 10px; z-index: 1000; }
+        .writing-vertical { writing-mode: vertical-rl; text-orientation: mixed; }
         
         #loading-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 9999;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999;
+            display: none; align-items: center; justify-content: center; flex-direction: column;
         }
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #4b0082;
-            border-top: 4px solid #ff00ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 10px;
+            width: 40px; height: 40px; border: 4px solid #4b0082; border-top: 4px solid #ff00ff;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
         .zone-label {
-            position: absolute;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            font-size: 10px;
-            padding: 2px 4px;
-            pointer-events: none;
-            z-index: 40;
-            white-space: nowrap;
-            display: none;
+            position: absolute; background: rgba(0,0,0,0.7); color: white;
+            font-size: 10px; padding: 2px 4px; pointer-events: none;
+            z-index: 40; white-space: nowrap; display: none;
         }
         .mode-edit .zone-label { display: block; }
         
         select.admin-select, input.admin-input {
-            background: #111;
-            color: white;
-            font-size: 11px;
-            padding: 4px;
-            border: 1px solid #444;
-            width: 100%;
+            background: #111; color: white; font-size: 11px; padding: 4px; border: 1px solid #444; width: 100%;
         }
-        
-        .prop-group {
-            background: #111;
-            border: 1px solid #333;
-            padding: 8px;
-            border-radius: 4px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        
-        .file-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 5px;
-            margin-top: 5px;
-        }
+        .prop-group { background: #111; border: 1px solid #333; padding: 8px; border-radius: 4px; display: flex; flex-direction: column; gap: 6px; }
+        .file-group { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px; }
 
-        #toast-container {
-            position: fixed;
-            top: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 9999;
-            pointer-events: none;
-        }
+        #toast-container { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: none; }
         .toast {
-            background: rgba(75, 0, 130, 0.9);
-            color: #fff;
-            padding: 10px 20px;
-            border-radius: 5px;
-            border: 1px solid #00ffea;
-            font-size: 12px;
-            box-shadow: 0 0 15px rgba(0, 255, 234, 0.3);
-            margin-bottom: 5px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            text-align: center;
+            background: rgba(75, 0, 130, 0.9); color: #fff; padding: 10px 20px;
+            border-radius: 5px; border: 1px solid #00ffea; font-size: 12px;
+            box-shadow: 0 0 15px rgba(0, 255, 234, 0.3); margin-bottom: 5px;
+            opacity: 0; transition: opacity 0.3s; text-align: center;
         }
         .toast.show { opacity: 1; }
-
     </style>
     <script>
-        // Global Error Handler
         window.onerror = function(msg, url, line, col, error) {
             const overlay = document.getElementById('error-overlay');
             const content = document.getElementById('error-content');
@@ -438,7 +240,6 @@
                 overlay.style.display = 'flex';
                 content.innerText = `【致命傷 (FATAL ERROR)】\n\n${msg}\n\nLocation: Line ${line}:${col}`;
             } else {
-                // Fallback if UI not ready
                 console.error(`FATAL ERROR:\n${msg}\nLine: ${line}`);
             }
             return false;
@@ -447,11 +248,10 @@
 </head>
 <body class="bg-black h-screen flex flex-col items-center justify-between mode-game">
 
-    <!-- Error Display -->
     <div id="error-overlay">
         <h2 class="text-2xl font-bold mb-4 animate-pulse">⚠️ SYSTEM FAILURE ⚠️</h2>
         <div id="error-content"></div>
-        <p class="mt-4 text-gray-400 text-sm">請檢查貼上的 JSON 格式是否正確 (括號是否成對、逗號是否遺漏)。</p>
+        <p class="mt-4 text-gray-400 text-sm">請檢查貼上的 JSON 格式是否正確。</p>
         <button onclick="location.reload()" class="mt-6 border border-red-500 text-red-500 px-4 py-2 hover:bg-red-900">REBOOT (F5)</button>
     </div>
 
@@ -460,7 +260,6 @@
         <div class="text-purple-300 text-xs tracking-widest animate-pulse" id="loading-text">INITIALIZING...</div>
     </div>
 
-    <!-- Toast Container -->
     <div id="toast-container"></div>
 
     <div class="top-controls">
@@ -470,7 +269,6 @@
         <button class="btn-style" onclick="toggleMode()" id="btn-admin">
             [ 管理模式 ]
         </button>
-        <!-- Gyro Button -->
         <button class="btn-style" onclick="toggleGyro()" id="btn-gyro">
             [ GYRO ]
         </button>
@@ -532,14 +330,10 @@
 
         <div class="prop-group">
             <label class="text-[9px] text-gray-500 uppercase tracking-wide">Properties</label>
-            
             <div class="flex flex-col gap-1">
                 <label class="text-[10px] text-gray-400" id="label-zone-type">類型 (Type):</label>
-                <select id="zone-type-select" class="admin-select" onchange="updateSelectedZoneProp('type', this.value)">
-                    <!-- Options populated by JS -->
-                </select>
+                <select id="zone-type-select" class="admin-select" onchange="updateSelectedZoneProp('type', this.value)"></select>
             </div>
-
             <div class="flex flex-col gap-1">
                 <label class="text-[10px] text-gray-400" id="label-zone-score">分數 (Score Bonus):</label>
                 <input type="number" id="zone-score-input" class="admin-input" min="0" max="100" onchange="updateSelectedZoneProp('bonus', parseInt(this.value))">
@@ -584,22 +378,10 @@
     </div>
 
     <script>
-        // --- ★★★ 核心設定區 (設定注入點) ★★★ ---
+        // --- CONFIG INJECTION POINT ---
+        let configData = null; // Paste your JSON here
         
-        // 請將您的 JSON 檔案內容完整複製，並取代下方的 'null'
-        // 注意：確保結尾的分號 ';' 不要被刪除
-        
-        let configData = 
-        
-        // ▼▼▼▼▼▼ 請貼在下方 (取代 null) ▼▼▼▼▼▼
-        
-        null
-        
-        // ▲▲▲▲▲▲ 請貼在上方 (取代 null) ▲▲▲▲▲▲
-        
-        ; 
-        
-        // --- 設定讀取邏輯 ---
+        // --- READ CONFIG ---
         let BASE_IMAGE = "http://googleusercontent.com/image_generation_content/1";
         let hitboxes = [{ "id": 1, "type": "head", "points": [{"x":20, "y":5}, {"x":80, "y":5}, {"x":80, "y":25}, {"x":20, "y":25}], "bonus": 2 }];
         let isDefaultImage = true;
@@ -609,149 +391,62 @@
             if(configData.hitboxes) hitboxes = configData.hitboxes;
             if(configData.isDefaultImage !== undefined) isDefaultImage = configData.isDefaultImage;
         }
-        
-        // -----------------------------------------------------------
 
         let currentLang = 'CN'; 
         
         const translations = {
             CN: {
-                load: "[ 讀取圖片 ]",
-                admin: "[ 管理模式 ]",
-                play: "[ 開始觀測 ]",
-                synch: "SYNCH", 
-                backend: "後台控制 (Backend)",
-                selectZone: "選擇目標 (Select Target):",
-                zoneType: "類型 (Type):",
-                zoneScore: "分數 (Score Bonus):",
-                showOutlines: "顯示框線 (Show Outlines)",
-                auto: "[ 自動掃描 (AUTO) ]",
-                save: "存檔 (Save)",
-                loadData: "讀檔 (Load)",
-                export: "匯出 (Export)",
-                import: "匯入 (Import)",
+                load: "[ 讀取圖片 ]", admin: "[ 管理模式 ]", play: "[ 開始觀測 ]", synch: "SYNCH", backend: "後台控制 (Backend)",
+                selectZone: "選擇目標 (Select Target):", zoneType: "類型 (Type):", zoneScore: "分數 (Score Bonus):",
+                showOutlines: "顯示框線 (Show Outlines)", auto: "[ 自動掃描 (AUTO) ]", save: "存檔 (Save)",
+                loadData: "讀檔 (Load)", export: "匯出 (Export)", import: "匯入 (Import)",
                 instr: "* 拖曳多邊形移動<br>* 拖曳錨點(小圓點)變形<br>* 完美貼合曲線",
-                break: "[ 斷開連接 ]",
-                status_tracking: "狀態: 監視中 (TRACKING)",
-                status_obsession: "狀態: 監禁中 (OBSESSION)",
-                status_breakdown: "狀態: 崩壞中 (BREAKDOWN)",
-                status_passion: "狀態: 激情模式 (PASSION)",
-                head: "頭部 (HEAD)",
-                eyes: "眼部 (EYES)",
-                lips: "唇部 (LIPS)",
-                neck: "頸部 (NECK)",
-                chest: "胸部 (CHEST)",
-                abdomen: "腹部 (ABDOMEN)",
-                thigh: "大腿 (THIGHS)",
-                calf: "小腿 (CALVES)",
-                foot: "腳部 (FOOT)",
-                arm_upper: "上臂 (UPPER ARM)",
-                arm_lower: "下臂 (LOWER ARM)",
-                hand: "手掌 (HAND)",
-                private: "私密 (PRIVATE)",
-                scan_start: "正在啟動多邊形骨骼偵測...",
-                scan_success: "掃描完成。已生成向量多邊形。",
-                scan_fail: "掃描失敗：無法辨識或權限受限。",
-                scan_no_face: "未檢測到臉部或身體，請使用清晰全身/半身照。",
-                scan_cors_error: "錯誤：請先點擊 [讀取圖片] 上傳您自己的 JPG/PNG 檔案。",
-                save_success: "存檔成功！Rei 已被保存。",
-                load_success: "讀檔成功！設定已還原。",
-                load_fail: "無存檔紀錄。"
+                break: "[ 斷開連接 ]", status_tracking: "狀態: 監視中 (TRACKING)", status_obsession: "狀態: 監禁中 (OBSESSION)",
+                status_breakdown: "狀態: 崩壞中 (BREAKDOWN)", status_passion: "狀態: 激情模式 (PASSION)",
+                head: "頭部 (HEAD)", eyes: "眼部 (EYES)", lips: "唇部 (LIPS)", neck: "頸部 (NECK)", chest: "胸部 (CHEST)",
+                abdomen: "腹部 (ABDOMEN)", thigh: "大腿 (THIGHS)", calf: "小腿 (CALVES)", foot: "腳部 (FOOT)",
+                arm_upper: "上臂 (UPPER ARM)", arm_lower: "下臂 (LOWER ARM)", hand: "手掌 (HAND)", private: "私密 (PRIVATE)",
+                scan_start: "正在啟動多邊形骨骼偵測...", scan_success: "掃描完成。已生成向量多邊形。",
+                scan_fail: "掃描失敗：無法辨識或權限受限。", scan_no_face: "未檢測到臉部或身體，請使用清晰全身/半身照。",
+                scan_cors_error: "錯誤：請先點擊 [讀取圖片] 上傳您自己的 JPG/PNG 檔案。", save_success: "存檔成功！Rei 已被保存。",
+                load_success: "讀檔成功！設定已還原。", load_fail: "無存檔紀錄。"
             },
             JP: {
-                load: "[ 画像読込 ]",
-                admin: "[ 管理モード ]",
-                play: "[ 観測開始 ]",
-                synch: "SYNCH", 
-                backend: "バックエンド制御",
-                selectZone: "対象選択 (Select Target):",
-                zoneType: "タイプ (Type):",
-                zoneScore: "スコア (Score Bonus):",
-                showOutlines: "枠線表示 (Show Outlines)",
-                auto: "[ 自動スキャン (AUTO) ]",
-                save: "保存 (Save)",
-                loadData: "読込 (Load)",
-                export: "出力 (Export)",
-                import: "入力 (Import)",
+                load: "[ 画像読込 ]", admin: "[ 管理モード ]", play: "[ 観測開始 ]", synch: "SYNCH", backend: "バックエンド制御",
+                selectZone: "対象選択 (Select Target):", zoneType: "タイプ (Type):", zoneScore: "スコア (Score Bonus):",
+                showOutlines: "枠線表示 (Show Outlines)", auto: "[ 自動スキャン (AUTO) ]", save: "保存 (Save)",
+                loadData: "読込 (Load)", export: "出力 (Export)", import: "入力 (Import)",
                 instr: "* ポリゴンをドラッグで移動<br>* アンカーをドラッグで変形<br>* 曲線にフィットさせる",
-                break: "[ 接続切断 ]",
-                status_tracking: "状態: 監視中 (TRACKING)",
-                status_obsession: "状態: 監禁中 (OBSESSION)",
-                status_breakdown: "状態: 崩壊中 (BREAKDOWN)",
-                status_passion: "状態: 激情モード (PASSION)",
-                head: "頭部 (HEAD)",
-                eyes: "眼部 (EYES)",
-                lips: "唇 (LIPS)",
-                neck: "頸部 (NECK)",
-                chest: "胸部 (CHEST)",
-                abdomen: "腹部 (ABDOMEN)",
-                thigh: "大腿 (THIGHS)",
-                calf: "小腿 (CALVES)",
-                foot: "足部 (FOOT)",
-                arm_upper: "上腕 (UPPER ARM)",
-                arm_lower: "前腕 (LOWER ARM)",
-                hand: "手掌 (HAND)",
-                private: "秘密 (PRIVATE)",
-                scan_start: "骨格検出を開始します...",
-                scan_success: "スキャン完了。ポリゴンを生成しました。",
-                scan_fail: "スキャン失敗: 認識不可または権限エラー。",
-                scan_no_face: "顔または体を検出できません。鮮明な画像を使用してください。",
-                scan_cors_error: "エラー: 先に [画像読込] からJPG/PNGをアップロードしてください。",
-                save_success: "保存完了。Reiは記録されました。",
-                load_success: "読込完了。設定を復元しました。",
-                load_fail: "保存データがありません。"
+                break: "[ 接続切断 ]", status_tracking: "状態: 監視中 (TRACKING)", status_obsession: "状態: 監禁中 (OBSESSION)",
+                status_breakdown: "状態: 崩壊中 (BREAKDOWN)", status_passion: "状態: 激情モード (PASSION)",
+                head: "頭部 (HEAD)", eyes: "眼部 (EYES)", lips: "唇 (LIPS)", neck: "頸部 (NECK)", chest: "胸部 (CHEST)",
+                abdomen: "腹部 (ABDOMEN)", thigh: "大腿 (THIGHS)", calf: "小腿 (CALVES)", foot: "足部 (FOOT)",
+                arm_upper: "上腕 (UPPER ARM)", arm_lower: "前腕 (LOWER ARM)", hand: "手掌 (HAND)", private: "秘密 (PRIVATE)",
+                scan_start: "骨格検出を開始します...", scan_success: "スキャン完了。ポリゴンを生成しました。",
+                scan_fail: "スキャン失敗: 認識不可または権限エラー。", scan_no_face: "顔または体を検出できません。鮮明な画像を使用してください。",
+                scan_cors_error: "エラー: 先に [画像読込] からJPG/PNGをアップロードしてください。", save_success: "保存完了。Reiは記録されました。",
+                load_success: "読込完了。設定を復元しました。", load_fail: "保存データがありません。"
             },
             EN: {
-                load: "[ LOAD IMAGE ]",
-                admin: "[ ADMIN MODE ]",
-                play: "[ START ]",
-                synch: "SYNCH",
-                backend: "BACKEND CONTROL",
-                selectZone: "SELECT TARGET:",
-                zoneType: "TYPE:",
-                zoneScore: "SCORE BONUS:",
-                showOutlines: "SHOW OUTLINES",
-                auto: "[ AUTO SCAN ]",
-                save: "SAVE",
-                loadData: "LOAD",
-                export: "EXPORT",
-                import: "IMPORT",
+                load: "[ LOAD IMAGE ]", admin: "[ ADMIN MODE ]", play: "[ START ]", synch: "SYNCH", backend: "BACKEND CONTROL",
+                selectZone: "SELECT TARGET:", zoneType: "TYPE:", zoneScore: "SCORE BONUS:",
+                showOutlines: "SHOW OUTLINES", auto: "[ AUTO SCAN ]", save: "SAVE",
+                loadData: "LOAD", export: "EXPORT", import: "IMPORT",
                 instr: "* Drag Polygon to move.<br>* Drag Anchor Points to deform.<br>* Fit curves perfectly.",
-                break: "[ BREAK CONNECTION ]",
-                status_tracking: "STATUS: TRACKING",
-                status_obsession: "STATUS: OBSESSION",
-                status_breakdown: "STATUS: BREAKDOWN",
-                status_passion: "STATUS: PASSION",
-                head: "HEAD",
-                eyes: "EYES",
-                lips: "LIPS",
-                neck: "NECK",
-                chest: "CHEST",
-                abdomen: "ABDOMEN",
-                thigh: "THIGHS",
-                calf: "CALVES",
-                foot: "FOOT",
-                arm_upper: "UPPER ARM",
-                arm_lower: "LOWER ARM",
-                hand: "HAND",
-                private: "PRIVATE",
-                scan_start: "INITIATING POLYGON SKELETON TRACKING...",
-                scan_success: "SCAN COMPLETE. POLYGONS GENERATED.",
-                scan_fail: "SCAN FAILED: PERMISSION OR ERROR.",
-                scan_no_face: "NO FACE/BODY DETECTED.",
-                scan_cors_error: "ERROR: Please [LOAD IMAGE] first.",
-                save_success: "SAVED.",
-                load_success: "LOADED.",
-                load_fail: "NO DATA FOUND."
+                break: "[ BREAK CONNECTION ]", status_tracking: "STATUS: TRACKING", status_obsession: "STATUS: OBSESSION",
+                status_breakdown: "STATUS: BREAKDOWN", status_passion: "STATUS: PASSION",
+                head: "HEAD", eyes: "EYES", lips: "LIPS", neck: "NECK", chest: "CHEST",
+                abdomen: "ABDOMEN", thigh: "THIGHS", calf: "CALVES", foot: "FOOT",
+                arm_upper: "UPPER ARM", arm_lower: "LOWER ARM", hand: "HAND", private: "PRIVATE",
+                scan_start: "INITIATING POLYGON SKELETON TRACKING...", scan_success: "SCAN COMPLETE. POLYGONS GENERATED.",
+                scan_fail: "SCAN FAILED: PERMISSION OR ERROR.", scan_no_face: "NO FACE/BODY DETECTED.",
+                scan_cors_error: "ERROR: Please [LOAD IMAGE] first.", save_success: "SAVED.",
+                load_success: "LOADED.", load_fail: "NO DATA FOUND."
             }
         };
 
         const zoneKeys = ['head', 'eyes', 'lips', 'neck', 'chest', 'abdomen', 'arm_upper', 'arm_lower', 'hand', 'private', 'thigh', 'calf', 'foot'];
-
-        const defaultBonuses = {
-            head: 2, eyes: 5, lips: 8, neck: 10, chest: 15, abdomen: 5, 
-            thigh: 6, calf: 4, foot: 10, arm_upper: 4, arm_lower: 5, hand: 8, private: 20
-        };
+        const defaultBonuses = { head: 2, eyes: 5, lips: 8, neck: 10, chest: 15, abdomen: 5, thigh: 6, calf: 4, foot: 10, arm_upper: 4, arm_lower: 5, hand: 8, private: 20 };
 
         let isEditMode = false;
         let selectedZoneId = null;
@@ -761,84 +456,51 @@
         let isPassionMode = false;
         let passionInteractionCount = 0; 
         let showOutlinesInGame = false;
-
-        let interactionStart = { x: 0, y: 0, time: 0 };
         let isInteracting = false;
         let activeZone = null;
+        let interactionStart = { x: 0, y: 0, time: 0 };
+        
+        // --- GYRO & ZOOM STATE ---
+        let gyroEnabled = false;
+        let currentScale = 1.0;
+        let currentTranslate = { x: 0, y: 0 };
+        let lastTouchDistance = 0;
         
         // --- GYRO LOGIC ---
-        let gyroEnabled = false;
-        let baseBeta = null;
-
         function toggleGyro() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // iOS 13+
                 DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            enableGyro();
-                        } else {
-                            showToast("Permission denied");
-                        }
-                    })
-                    .catch(e => {
-                        console.error(e);
-                        // On non-HTTPS local environment, this might fail.
-                        showToast("HTTPS Required for Gyro");
-                    });
-            } else {
-                // Non-iOS
-                enableGyro();
-            }
+                    .then(permissionState => { if (permissionState === 'granted') enableGyro(); else showToast("Permission denied"); })
+                    .catch(e => showToast("HTTPS Required"));
+            } else { enableGyro(); }
         }
 
         function enableGyro() {
             gyroEnabled = !gyroEnabled;
             const btn = document.getElementById('btn-gyro');
             const wrapper = document.getElementById('pan-wrapper');
-            
             if(gyroEnabled) {
                 btn.classList.add('active');
                 window.addEventListener('deviceorientation', handleOrientation);
                 document.getElementById('rei-dialogue').innerText = "「……感覚が……リンクした。君の動きに合わせて、僕の世界も揺れるよ。」";
-                
-                // Reset wrapper transition for smoother look (optional)
                 wrapper.style.transition = 'transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             } else {
                 btn.classList.remove('active');
                 window.removeEventListener('deviceorientation', handleOrientation);
                 document.getElementById('rei-dialogue').innerText = "「……リンク切断。……また手で触れてくれる？」";
-                
-                // Reset to center or keep current pos? Keep current.
-                // Restore wrapper transition if changed
                 wrapper.style.transition = 'transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             }
         }
 
         function handleOrientation(event) {
             if(!gyroEnabled) return;
-            
-            // beta: front-back tilt [-180, 180]
-            // gamma: left-right tilt [-90, 90]
-            
             let beta = event.beta; 
             let gamma = event.gamma;
+            if(beta === null || gamma === null) return;
 
-            if(beta === null || gamma === null) return; // Gyro not supported
-
-            // Constraints
-            // Gamma: -30(left) -> 0% ... +30(right) -> 100%
-            // Beta: 30(top forward) -> 0% ... 70(top back) -> 100%
-            
             // Map gamma -30..30 to 0..1
-            // value, in_min, in_max, out_min, out_max
             let xPct = (gamma - (-30)) * (1 - 0) / (30 - (-30)) + 0;
-            
-            // Map beta 30..70 to 0..1
-            // Tilting phone forward (screen down) -> beta decreases -> look down (yp -> 1)? 
-            // Usually tilting top away (beta increases) -> look up.
-            // Let's assume holding phone at 45deg is center.
-            // 20deg -> look up (yp=0), 70deg -> look down (yp=1)
+            // Map beta 20..70 to 0..1
             let yPct = (beta - 20) * (1 - 0) / (70 - 20) + 0;
 
             xPct = Math.max(0, Math.min(1, xPct));
@@ -847,29 +509,108 @@
             const c = document.getElementById('game-container');
             const w = document.getElementById('pan-wrapper');
             
-            // Calculate translate values
-            // maxTrans is negative (c.width - w.width)
-            const maxTransX = c.offsetWidth - w.offsetWidth;
-            const maxTransY = c.offsetHeight - w.offsetHeight;
+            // Calculate translate values based on scaled size
+            // Effective Width = w.offsetWidth * currentScale
+            // Max Translate = Container Width - Effective Width
+            const effW = w.offsetWidth * currentScale;
+            const effH = w.offsetHeight * currentScale;
             
-            const targetX = maxTransX * xPct;
-            const targetY = maxTransY * yPct;
+            const maxTransX = c.offsetWidth - effW;
+            const maxTransY = c.offsetHeight - effH;
             
-            w.style.transform = `translate(${targetX}px, ${targetY}px)`;
+            // Allow translating only if content is larger than container
+            const targetX = maxTransX < 0 ? maxTransX * xPct : 0;
+            const targetY = maxTransY < 0 ? maxTransY * yPct : 0;
+            
+            currentTranslate = { x: targetX, y: targetY };
+            updateTransform();
+        }
+        
+        // --- ZOOM LOGIC ---
+        // Attach touch listeners to container
+        const container = document.getElementById('game-container');
+        
+        container.addEventListener('touchstart', handleTouchStart, { passive: false });
+        container.addEventListener('touchmove', handleTouchMove, { passive: false });
+        container.addEventListener('touchend', handleTouchEnd);
+
+        function getDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx*dx + dy*dy);
         }
 
-        // --- TOAST FUNCTION ---
+        function handleTouchStart(e) {
+            if (e.touches.length === 2) {
+                lastTouchDistance = getDistance(e.touches);
+                e.preventDefault();
+            }
+        }
+
+        function handleTouchMove(e) {
+            if (e.touches.length === 2) {
+                const dist = getDistance(e.touches);
+                const delta = dist - lastTouchDistance;
+                
+                // Sensitivity
+                const zoomSpeed = 0.005; 
+                let newScale = currentScale + delta * zoomSpeed;
+                
+                // Clamp Scale
+                newScale = Math.max(1.0, Math.min(3.0, newScale));
+                
+                currentScale = newScale;
+                lastTouchDistance = dist;
+                
+                updateTransform();
+                e.preventDefault();
+            }
+        }
+        
+        function handleTouchEnd(e) {
+            // Cleanup if needed
+        }
+
+        function updateTransform() {
+            const w = document.getElementById('pan-wrapper');
+            // Apply both translate and scale
+            // Note: origin is 0 0, so translate moves the scaled element top-left
+            w.style.transform = `translate(${currentTranslate.x}px, ${currentTranslate.y}px) scale(${currentScale})`;
+        }
+
+        // --- MOUSE PAN LOGIC (Modified to support Scale) ---
+        function handleContainerMove(e) {
+            if (gyroEnabled || isEditMode || isInteracting) return;
+            // Only pan if not multi-touch (zooming)
+            
+            const c = e.currentTarget;
+            const w = document.getElementById('pan-wrapper');
+            
+            const effW = w.offsetWidth * currentScale;
+            const effH = w.offsetHeight * currentScale;
+
+            if (effW <= c.offsetWidth && effH <= c.offsetHeight) return;
+
+            const rect = c.getBoundingClientRect();
+            // Mouse pos 0..1
+            const xp = Math.max(0, Math.min(1, (e.clientX-rect.left)/c.offsetWidth));
+            const yp = Math.max(0, Math.min(1, (e.clientY-rect.top)/c.offsetHeight));
+            
+            const targetX = (c.offsetWidth - effW) * xp;
+            const targetY = (c.offsetHeight - effH) * yp;
+            
+            currentTranslate = { x: targetX, y: targetY };
+            updateTransform();
+        }
+
+        // --- UTILS ---
         function showToast(message) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = 'toast show';
             toast.innerText = message;
             container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => { container.removeChild(toast); }, 300);
-            }, 3000);
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => { container.removeChild(toast); }, 300); }, 3000);
         }
 
         function toggleLanguage() {
@@ -925,39 +666,24 @@
         }
 
         function saveData() {
-            const data = {
-                image: BASE_IMAGE,
-                hitboxes: hitboxes,
-                isDefaultImage: isDefaultImage,
-                timestamp: Date.now()
-            };
+            const data = { image: BASE_IMAGE, hitboxes: hitboxes, isDefaultImage: isDefaultImage, timestamp: Date.now() };
             localStorage.setItem('rei_touch_game_data', JSON.stringify(data));
             showToast(translations[currentLang].save_success);
         }
 
         function loadData() {
             const json = localStorage.getItem('rei_touch_game_data');
-            if (!json) {
-                showToast(translations[currentLang].load_fail);
-                return;
-            }
+            if (!json) { showToast(translations[currentLang].load_fail); return; }
             applyData(JSON.parse(json));
             showToast(translations[currentLang].load_success);
         }
 
         function exportData() {
-            const data = {
-                image: BASE_IMAGE,
-                hitboxes: hitboxes,
-                isDefaultImage: isDefaultImage,
-                timestamp: Date.now()
-            };
+            const data = { image: BASE_IMAGE, hitboxes: hitboxes, isDefaultImage: isDefaultImage, timestamp: Date.now() };
             const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = `rei_config_${Date.now()}.json`;
-            a.click();
+            a.href = url; a.download = `rei_config_${Date.now()}.json`; a.click();
             URL.revokeObjectURL(url);
         }
 
@@ -970,24 +696,15 @@
                     const data = JSON.parse(e.target.result);
                     applyData(data);
                     showToast(translations[currentLang].load_success);
-                } catch (err) {
-                    showToast("Invalid File");
-                }
+                } catch (err) { showToast("Invalid File"); }
             };
             reader.readAsText(file);
         }
 
         function applyData(data) {
-            if (data.image) {
-                BASE_IMAGE = data.image;
-                document.getElementById('rei-image').src = BASE_IMAGE;
-            }
-            if (data.hitboxes) {
-                hitboxes = data.hitboxes;
-            }
-            if (data.isDefaultImage !== undefined) {
-                isDefaultImage = data.isDefaultImage;
-            }
+            if (data.image) { BASE_IMAGE = data.image; document.getElementById('rei-image').src = BASE_IMAGE; }
+            if (data.hitboxes) { hitboxes = data.hitboxes; }
+            if (data.isDefaultImage !== undefined) { isDefaultImage = data.isDefaultImage; }
             renderHitboxes();
         }
 
@@ -1000,6 +717,9 @@
 
         function startInteraction(e, zone) {
             if (isEditMode) return;
+            // If zooming (2 fingers), don't trigger interaction
+            if (e.touches && e.touches.length > 1) return;
+            
             e.preventDefault();
             isInteracting = true;
             activeZone = zone;
@@ -1033,7 +753,81 @@
             document.removeEventListener('mouseup', endInteraction);
             document.removeEventListener('touchend', endInteraction);
         }
+        
+        // --- DRAG POLYGON ---
+        let dragItem=null, dragStart={x:0,y:0}, ptsStart=[];
+        function startDragPoly(e, id) {
+            if (!isEditMode) return;
+            dragItem = hitboxes.find(z => z.id === id);
+            const cx = e.clientX || e.touches[0].clientX;
+            const cy = e.clientY || e.touches[0].clientY;
+            dragStart = { x: cx, y: cy };
+            ptsStart = JSON.parse(JSON.stringify(dragItem.points));
+            selectZone(id);
+            document.addEventListener('mousemove', onDragPoly);
+            document.addEventListener('touchmove', onDragPoly);
+            document.addEventListener('mouseup', stopDragPoly);
+            document.addEventListener('touchend', stopDragPoly);
+        }
+        function onDragPoly(e) {
+            if (!dragItem) return;
+            e.preventDefault(); // Stop scroll
+            const cx = e.clientX || e.touches[0].clientX;
+            const cy = e.clientY || e.touches[0].clientY;
+            
+            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
+            // Need to account for scale in drag calculation? 
+            // Percent is relative to element size, element size visually scales.
+            // If scale is 2.0, moving 100px visually is 50px in original coordinates?
+            // Actually, getBoundingClientRect returns scaled dimensions. So % calc should be correct automatically.
+            
+            const dx = ((cx - dragStart.x)/r.width)*100;
+            const dy = ((cy - dragStart.y)/r.height)*100;
+            
+            dragItem.points = ptsStart.map(p => ({ x: Math.max(0, Math.min(100, p.x+dx)), y: Math.max(0, Math.min(100, p.y+dy)) }));
+            renderHitboxes();
+        }
+        function stopDragPoly() { 
+            dragItem=null; 
+            document.removeEventListener('mousemove', onDragPoly); 
+            document.removeEventListener('touchmove', onDragPoly); 
+            document.removeEventListener('mouseup', stopDragPoly); 
+            document.removeEventListener('touchend', stopDragPoly); 
+        }
 
+        let dragV = null;
+        function startDragVertex(e, zid, idx) {
+            if (!isEditMode) return;
+            e.stopPropagation();
+            dragV = { zid, idx };
+            selectZone(zid);
+            document.addEventListener('mousemove', onDragV);
+            document.addEventListener('touchmove', onDragV);
+            document.addEventListener('mouseup', stopDragV);
+            document.addEventListener('touchend', stopDragV);
+        }
+        function onDragV(e) {
+            if (!dragV) return;
+            e.preventDefault();
+            const cx = e.clientX || e.touches[0].clientX;
+            const cy = e.clientY || e.touches[0].clientY;
+            
+            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
+            const px = ((cx - r.left)/r.width)*100;
+            const py = ((cy - r.top)/r.height)*100;
+            
+            const z = hitboxes.find(h=>h.id===dragV.zid);
+            if(z) { z.points[dragV.idx] = {x:Math.max(0,Math.min(100,px)), y:Math.max(0,Math.min(100,py))}; renderHitboxes(); }
+        }
+        function stopDragV() { 
+            dragV=null; 
+            document.removeEventListener('mousemove', onDragV); 
+            document.removeEventListener('touchmove', onDragV); 
+            document.removeEventListener('mouseup', stopDragV); 
+            document.removeEventListener('touchend', stopDragV); 
+        }
+
+        // --- STANDARD AI/GAME LOGIC (Same as before) ---
         async function loadModels() {
             if (modelsLoaded) return true;
             const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
@@ -1184,6 +978,7 @@
                 
                 if (isEditMode) {
                     poly.onmousedown = (e) => startDragPoly(e, zone.id);
+                    poly.ontouchstart = (e) => startDragPoly(e, zone.id);
                     poly.onclick = (e) => { e.stopPropagation(); selectZone(zone.id); };
                 } else {
                     poly.onmousedown = (e) => startInteraction(e, zone);
@@ -1198,6 +993,7 @@
                         h.style.left = p.x + '%';
                         h.style.top = p.y + '%';
                         h.onmousedown = (e) => startDragVertex(e, zone.id, idx);
+                        h.ontouchstart = (e) => startDragVertex(e, zone.id, idx);
                         vertexLayer.appendChild(h);
                     });
                 }
@@ -1260,69 +1056,7 @@
             }
         }
 
-        let dragItem=null, dragStart={x:0,y:0}, ptsStart=[];
-        function startDragPoly(e, id) {
-            if (!isEditMode) return;
-            dragItem = hitboxes.find(z => z.id === id);
-            dragStart = { x: e.clientX, y: e.clientY };
-            ptsStart = JSON.parse(JSON.stringify(dragItem.points));
-            selectZone(id);
-            document.addEventListener('mousemove', onDragPoly);
-            document.addEventListener('mouseup', stopDragPoly);
-        }
-        function onDragPoly(e) {
-            if (!dragItem) return;
-            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
-            const dx = ((e.clientX-dragStart.x)/r.width)*100, dy = ((e.clientY-dragStart.y)/r.height)*100;
-            dragItem.points = ptsStart.map(p => ({ x: Math.max(0, Math.min(100, p.x+dx)), y: Math.max(0, Math.min(100, p.y+dy)) }));
-            renderHitboxes();
-        }
-        function stopDragPoly() { dragItem=null; document.removeEventListener('mousemove', onDragPoly); document.removeEventListener('mouseup', stopDragPoly); }
-
-        let dragV = null;
-        function startDragVertex(e, zid, idx) {
-            if (!isEditMode) return;
-            e.stopPropagation();
-            dragV = { zid, idx };
-            selectZone(zid);
-            document.addEventListener('mousemove', onDragV);
-            document.addEventListener('mouseup', stopDragV);
-        }
-        function onDragV(e) {
-            if (!dragV) return;
-            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
-            const px = ((e.clientX-r.left)/r.width)*100, py = ((e.clientY-r.top)/r.height)*100;
-            const z = hitboxes.find(h=>h.id===dragV.zid);
-            if(z) { z.points[dragV.idx] = {x:Math.max(0,Math.min(100,px)), y:Math.max(0,Math.min(100,py))}; renderHitboxes(); }
-        }
-        function stopDragV() { dragV=null; document.removeEventListener('mousemove', onDragV); document.removeEventListener('mouseup', stopDragV); }
-
-        function handleContainerMove(e) {
-            if (gyroEnabled || dragItem || dragV || isInteracting) return;
-            const c = e.currentTarget, w = document.getElementById('pan-wrapper');
-            if (w.offsetWidth <= c.offsetWidth) return;
-            const rect = c.getBoundingClientRect();
-            const xp = Math.max(0, Math.min(1, (e.clientX-rect.left)/c.offsetWidth));
-            const yp = Math.max(0, Math.min(1, (e.clientY-rect.top)/c.offsetHeight));
-            w.style.transform = `translate(${(c.offsetWidth-w.offsetWidth)*xp}px, ${(c.offsetHeight-w.offsetHeight)*yp}px)`;
-        }
-
-        function loadCustomImage(e) {
-            const f = e.target.files[0];
-            if(!f) return;
-            const r = new FileReader();
-            r.onload = function(ev) {
-                BASE_IMAGE = ev.target.result;
-                isDefaultImage = false;
-                const img = document.getElementById('rei-image');
-                img.src = BASE_IMAGE;
-                img.style.width="auto"; img.style.height="auto";
-                if(!isEditMode) toggleMode();
-            };
-            r.readAsDataURL(f);
-        }
-
-        // --- FULL DIALOGUE DATABASE ---
+        // --- DIALOGUES ---
         const dialogues = {
             CN: {
                 normal: {
@@ -1343,16 +1077,16 @@
                 passion: {
                     head: { touch: ["「把我的腦漿攪亂吧……想裝滿你。」", "「……思考停止了……只有你……」", "「……好疼……但是好舒服……」"], stroke: ["「乖孩子……是在調教我嗎？啊哈哈，再來。」", "「……把我的理智全部抹消掉吧……」", "「……撫摸？不，這是侵蝕……」"] },
                     eyes: { touch: ["「除了你什麼都不想看。……乾脆戳瞎好了。」", "「……你的倒影……要把眼球燒壞了。」", "「……黑暗中只有你……太棒了……」"], stroke: ["「視野被你填滿……這是最棒的地獄。」", "「……遮住眼睛……然後做什麼都可以喔……」", "「……眼淚……止不住……因為太愛你了……」"] },
-                    lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
-                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
-                    chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
-                    abdomen: { touch: ["「……內臟……要爛掉了……」", "「……好熱……肚子裡有火……」", "「……穿透我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
-                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
+                    lips: { touch: ["「……食いちぎってもいいよ。僕の言葉も、呼吸も、全部君のものだ。」", "「……血の味、してみたい？」", "「……僕を食べて……」"], stroke: ["「……口の中まで犯されたい？　……ん、なんでもするよ。」", "「……唾液が……混ざり合って……」", "「……息ができない……はぁ……もっと……」"] },
+                    neck: { touch: ["「……絞めて。君の手で終わるなら、それが最高のエンドロールだよ。」", "「……折ってもいいよ……」", "「……ここは君の所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……爪が食い込む……あぁ……ゾクゾクする……」", "「……息苦しい……でも……幸せ……」"] },
+                    chest: { touch: ["「痛い……痛いよ、愛しすぎて。……ねえ、肋骨を折って、心臓に触れて。」", "「……ここをくり抜いて……君を詰めて……」", "「……壊れた……心臓が壊れたよ……」"], stroke: ["「……中身まで全部、君の体液で書き換えてよ。……僕を『君』にして。」", "「……肋骨の隙間に……指を入れて……」", "「……鼓動……うるさいでしょ？……止めてよ……」"] },
+                    abdomen: { touch: ["「……内臓……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……掻き混ぜて……中をぐちゃぐちゃにして……」", "「……子宮（奥）が疼く……男なのに……おかしいね……」", "「……淫紋……刻んで……」"] },
+                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……もっと上まで……食べ尽くして……」", "「……電流が……神経を走る……」", "「……廃人になっても……飼ってくれる？……」"] },
                     calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
                     foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絶対服従……身も心も……」"] },
                     arm_upper: { touch: ["「……この腕、切り落として部屋に飾ってよ。」", "「……抱擁……？いや、これは拘束……」", "「……痛い……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
-                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
-                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
+                    arm_lower: { touch: ["「……ここを切れば、赤い糸が見えるよ。」", "「……血管……噛みちぎりたい？」", "「……この手は……君に触れる為だけに……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
+                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
                     private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
                 }
             },
@@ -1389,7 +1123,6 @@
                 }
             },
             EN: {
-                // Placeholder EN
                 normal: {
                     head: { touch: ["...Did you touch my hair?", "...Whatever."], stroke: ["...That feels okay."] },
                     default: { touch: ["...Touched."], stroke: ["...More."] }
