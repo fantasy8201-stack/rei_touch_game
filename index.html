@@ -579,43 +579,9 @@
             }
         }
 
-        // --- FIXED: updateTransform with Bounds Clamping ---
         function updateTransform() {
-            const container = document.getElementById('game-container');
-            const wrapper = document.getElementById('pan-wrapper');
-            
-            if(!container || !wrapper) return;
-
-            // Recalculate effective dimensions based on current scale
-            const effW = wrapper.offsetWidth * currentScale;
-            const effH = wrapper.offsetHeight * currentScale;
-            
-            // Calculate boundaries (negative values or 0)
-            // minX is the farthest left we can pan (showing the right edge of image)
-            // maxX is 0 (showing left edge of image)
-            const minX = container.offsetWidth - effW;
-            const minY = container.offsetHeight - effH;
-            
-            // If the image is somehow smaller than container (unlikely with min-width 100%), 
-            // clamp to 0.
-            const maxX = 0;
-            const maxY = 0;
-            
-            let x = currentTranslate.x;
-            let y = currentTranslate.y;
-            
-            // Apply Constraints: Stop at the last allowed value (clamping)
-            if (x < minX) x = minX;
-            if (x > maxX) x = maxX;
-            
-            if (y < minY) y = minY;
-            if (y > maxY) y = maxY;
-            
-            // Update state to prevent drift and ensure consistency
-            currentTranslate.x = x;
-            currentTranslate.y = y;
-
-            wrapper.style.transform = `translate(${x}px, ${y}px) scale(${currentScale})`;
+            const w = document.getElementById('pan-wrapper');
+            w.style.transform = `translate(${currentTranslate.x}px, ${currentTranslate.y}px) scale(${currentScale})`;
         }
 
         // --- MOUSE PAN LOGIC (Modified to support Scale) ---
@@ -1118,14 +1084,14 @@
                     lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
                     neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……留下痕跡。讓誰都看得出我是你的東西。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
                     chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
-                    abdomen: { touch: ["「……內臟……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
-                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
-                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
-                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絕對服従……身も心も……」"] },
-                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
-                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……噛みちぎりたい？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
-                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……指甲豎起來。留下傷痕。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
-                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……君専用の肉便器にして……」"], stroke: ["「……ひぐっ、あぁっ！　……もう、理性なんていらない……君の玩具でいい……っ！」", "「……壊れる……あ……イく……」", "「……全部……全部持ってって……精気も……命も……」"] }
+                    abdomen: { touch: ["「……內臟……會壞掉的喔……」", "「……好熱……肚子裡像有火在燒……」", "「……貫穿我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……深處在疼……明明是男的……真奇怪呢……」", "「……刻上淫紋也可以喔……」"] },
+                    thigh: { touch: ["「……只要打斷腿，就哪裡也去不了了呢……好啊，敲碎吧。」", "「……這雙腿只為你張開……」", "「……顫抖……停不下來……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
+                    calf: { touch: ["「……挑斷阿基里斯腱也可以喔……這樣就逃不掉了。」", "「……無法站立的人偶……那就是我……」", "「……要殺要剮隨你便……」"], stroke: ["「……像蛇一樣爬上來了……你的慾望……」", "「……肌肉在抽搐……感覺到了嗎？……」", "「……再更多……凌辱我……」"] },
+                    foot: { touch: ["「……舔鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……連腳尖都麻痺了……要瘋了……」", "「……鎖鏈的聲音……聽到了嗎？……」", "「……絕對服従……身心都是……」"] },
+                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["「……用指甲……撕裂皮膚……血的味道……」", "「……把你刻在肉體上……」", "「……拘束具……再緊一點……」"] },
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……啊……血液逆流了……」", "「……手腕……折斷也可以喔……」", "「……已經……動不了了……」"] },
+                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化黏在一起了……」", "「……永遠……不分開……」"] },
+                    private: { touch: ["「……啊哈♡　更多、更多地破壞我……讓我除了你以外，什麼都感覺不到！」", "「……播種……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
                 }
             },
             JP: {
