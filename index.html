@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>曉月 零的觀測室 - Tracking Ver.</title>
+    <title>曉月 零的觀測室 - Final Ver.</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Face API & TensorFlow -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
@@ -21,7 +22,7 @@
             transition: background-color 1s;
         }
 
-        /* Passion Mode Styles */
+        /* --- Passion Mode Styles --- */
         body.passion-mode {
             background-color: #1a0005;
         }
@@ -36,7 +37,12 @@
             background: linear-gradient(to top, #500000, #ff0000);
             box-shadow: 0 0 10px #ff0000;
         }
+        body.passion-mode #message-box {
+            border-top: 2px solid #ff0000;
+            background: linear-gradient(180deg, rgba(20, 0, 0, 0.95) 0%, rgba(40, 0, 0, 0.98) 100%);
+        }
 
+        /* --- Layout & Effects --- */
         .rei-overlay-gradient {
             background: radial-gradient(circle, rgba(26,26,46,0) 0%, rgba(13,13,13,0.4) 90%, rgba(0,0,0,0.8) 100%);
             pointer-events: none;
@@ -81,6 +87,7 @@
             transition: filter 0.4s ease;
         }
 
+        /* --- Hitboxes & SVG --- */
         #hitbox-svg {
             position: absolute;
             top: 0;
@@ -99,18 +106,13 @@
             vector-effect: non-scaling-stroke; 
         }
 
-        /* Game Mode: Default Hidden (No Stroke, No Fill on Active) */
+        /* Game Mode: Hidden by default */
         .mode-game polygon { 
             pointer-events: all; 
             stroke: none;
             fill: transparent;
         }
-        .mode-game polygon:active {
-            fill: transparent;
-            stroke: none;
-        }
-
-        /* Game Mode: Visible Option (Show Outline & Red Feedback) */
+        /* Game Mode: Show Outlines if toggled */
         .mode-game.show-outlines polygon {
             stroke: rgba(255, 255, 255, 0.15);
             stroke-width: 1px;
@@ -123,6 +125,7 @@
             stroke-dasharray: 0;
         }
 
+        /* Edit Mode */
         .mode-edit polygon {
             stroke: rgba(255, 0, 127, 0.5);
             stroke-width: 1px;
@@ -130,7 +133,6 @@
             fill: rgba(255, 0, 127, 0.05);
             cursor: move;
         }
-        
         .mode-edit polygon.selected {
             stroke: #00ffea;
             stroke-width: 2px;
@@ -169,16 +171,12 @@
             z-index: 30;
         }
 
+        /* --- UI Elements --- */
         #message-box {
             background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 10, 20, 0.98) 100%);
             border-top: 2px solid #4b0082;
             box-shadow: 0 -10px 40px rgba(0,0,0,0.9);
             transition: all 0.5s;
-        }
-        
-        body.passion-mode #message-box {
-            border-top: 2px solid #ff0000;
-            background: linear-gradient(180deg, rgba(20, 0, 0, 0.95) 0%, rgba(40, 0, 0, 0.98) 100%);
         }
 
         .expression-shy { filter: sepia(0.2) saturate(1.4) brightness(1.1); }
@@ -195,7 +193,7 @@
             100% { transform: translate(0, 0); filter: none;}
         }
 
-        /* --- UPDATED ADMIN PANEL --- */
+        /* --- Admin Panel --- */
         .admin-panel {
             position: fixed;
             top: 50%;
@@ -205,7 +203,7 @@
             border: 1px solid #4b0082;
             padding: 15px;
             border-radius: 10px;
-            z-index: 100;
+            z-index: 999; 
             display: none;
             flex-direction: column;
             gap: 10px;
@@ -302,14 +300,14 @@
             left: 10px;
             display: flex;
             gap: 10px;
-            z-index: 110;
+            z-index: 1000; 
         }
         
         .lang-switch {
             position: fixed;
             top: 10px;
             right: 10px;
-            z-index: 110;
+            z-index: 1000;
         }
         
         .writing-vertical {
@@ -321,7 +319,7 @@
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.8);
-            z-index: 200;
+            z-index: 9999;
             display: none;
             align-items: center;
             justify-content: center;
@@ -377,13 +375,12 @@
             margin-top: 5px;
         }
 
-        /* --- TOAST NOTIFICATION --- */
         #toast-container {
             position: fixed;
             top: 50px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 200;
+            z-index: 9999;
             pointer-events: none;
         }
         .toast {
@@ -530,8 +527,24 @@
     </div>
 
     <script>
-        let BASE_IMAGE = "http://googleusercontent.com/image_generation_content/1";
-        let isDefaultImage = true; 
+        // --- ★★★ 核心設定區 (由此處貼上您的 JSON 內容) ★★★ ---
+        // 請打開您的 rei_config_....json 檔案，複製全部內容
+        // 並取代下方的 configData 物件內容
+        
+        let configData = {
+            "image": "http://googleusercontent.com/image_generation_content/1", // 預設圖片
+            "hitboxes": [
+                { "id": 1, "type": "head", "points": [{"x":20, "y":5}, {"x":80, "y":5}, {"x":80, "y":25}, {"x":20, "y":25}], "bonus": 2 }
+            ],
+            "isDefaultImage": true
+        };
+        
+        // -----------------------------------------------------------
+
+        let BASE_IMAGE = configData.image;
+        let hitboxes = configData.hitboxes;
+        let isDefaultImage = configData.isDefaultImage;
+
         let currentLang = 'CN'; 
         
         const translations = {
@@ -672,10 +685,6 @@
             head: 2, eyes: 5, lips: 8, neck: 10, chest: 15, abdomen: 5, 
             thigh: 6, calf: 4, foot: 10, arm_upper: 4, arm_lower: 5, hand: 8, private: 20
         };
-
-        let hitboxes = [
-            { id: 1, type: 'head', points: [{x:20, y:5}, {x:80, y:5}, {x:80, y:25}, {x:20, y:25}], bonus: 2 }
-        ];
 
         let isEditMode = false;
         let selectedZoneId = null;
@@ -1163,7 +1172,7 @@
                     neck: { touch: ["「……那是急所喔。想殺了我嗎？還是……」", "「……項圈的痕跡，想再增加嗎？」", "「……脈搏跳得很快？……那是因為你啊。」"], stroke: ["「……啊、那裡……沿著脖頸撫摸，會發抖的……」", "「……像是在確認所有權一樣……」", "「……嗯……喉嚨深處，都變熱了……」"] },
                     chest: { touch: ["「……聽得到嗎？這骯髒的跳動聲。」", "「……這裡面全都是黑色的感情喔，即使這樣也沒關係？」", "「……痛嗎？不，這是興奮。」"], stroke: ["「……連心臟都要被你掏出來了……把我的全部給你。」", "「……撫摸肋骨……像是在確認形狀一樣……」", "「……哈啊……胸口好悶……被你的愛填滿了……」"] },
                     abdomen: { touch: ["「……肚子，沒什麼好看的吧？」", "「……好癢。別鬧了。」", "「……想把這裡剖開看看嗎？」"], stroke: ["「……嗯……手指在爬……好奇怪的感覺……」", "「……啊……那裡是內臟的位置……別按……」", "「……要融化了……肚子裡熱熱的……」"] },
-                    thigh: { touch: ["「……想睡膝枕嗎？還是……想讓我動不了？」", "「……這雙腿，是為了走向你而存在的。」", "「……別捏，會有痕跡的。」"], stroke: ["「……哈啊……大腿內側……很敏感的……」", "「……指尖的軌跡……留下來了……」", "「……別這樣慢騰騰地摸……會想要更多……」"] },
+                    thigh: { touch: ["「……想睡膝枕嗎？還是……想讓我動不了？」", "「……這雙腿，是為了走向你而存在的。」", "「……別捏，會有痕跡。」"], stroke: ["「……哈啊……大腿內側……很敏感的……」", "「……指尖的軌跡……留下來了……」", "「……別這樣慢騰騰地摸……會想要更多……」"] },
                     calf: { touch: ["「……小腿？奇怪的愛好。」", "「……要幫我脫靴子嗎？」", "「……隨你喜歡。」"], stroke: ["「……沿著肌肉線條……嗯……」", "「……要按摩嗎？……隨便你。」", "「……連這種地方都……你真是貪心。」"] },
                     foot: { touch: ["「……想舔鞋底嗎？……開玩笑的。」", "「……要在這裡跪下嗎？」", "「……真是個變態。」"], stroke: ["「……腳踝……別抓那麼緊……」", "「……要親吻那裡也可以喔……如果是你的話。」", "「……完全服從……這就是你想要的吧？」"] },
                     arm_upper: { touch: ["「……想被抱緊嗎？」", "「……隨時都可以抱住你喔。」", "「……抓緊了，別放手。」"], stroke: ["「……二頭肌？……沒那麼結實吧。」", "「……撫摸手臂……是在撒嬌嗎？」", "「……體溫……傳過來了……」"] },
@@ -1175,7 +1184,7 @@
                     head: { touch: ["「把我的腦漿攪亂吧……想裝滿你。」", "「……思考停止了……只有你……」", "「……好疼……但是好舒服……」"], stroke: ["「乖孩子……是在調教我嗎？啊哈哈，再來。」", "「……把我的理智全部抹消掉吧……」", "「……撫摸？不，這是侵蝕……」"] },
                     eyes: { touch: ["「除了你什麼都不想看。……乾脆戳瞎好了。」", "「……你的倒影……要把眼球燒壞了。」", "「……黑暗中只有你……太棒了……」"], stroke: ["「視野被你填滿……這是最棒的地獄。」", "「……遮住眼睛……然後做什麼都可以喔……」", "「……眼淚……止不住……因為太愛你了……」"] },
                     lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
-                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……留下痕跡。讓誰都看得出我是你的東西。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
+                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
                     chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
                     abdomen: { touch: ["「……內臟……要爛掉了……」", "「……好熱……肚子裡有火……」", "「……穿透我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
                     thigh: { touch: ["「……腿斷了就哪也去不了了……好啊，打斷它。」", "「……這雙腿只會為你張開……」", "「……顫抖……停不下來……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
@@ -1218,6 +1227,17 @@
                     hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……爪を立てて。傷跡を残して。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
                     private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付け……君の毒……」", "「……君専用の肉便器にして……」"], stroke: ["「……ひぐっ、あぁっ！　……もう、理性なんていらない……君の玩具でいい……っ！」", "「……壊れる……あ……イく……」", "「……全部……全部持ってって……精気も……命も……」"] }
                 }
+            },
+            EN: {
+                // Placeholder EN
+                normal: {
+                    head: { touch: ["...Did you touch my hair?", "...Whatever."], stroke: ["...That feels okay."] },
+                    default: { touch: ["...Touched."], stroke: ["...More."] }
+                },
+                passion: {
+                    head: { touch: ["Mess up my brain...", "...Only you..."], stroke: ["Good boy? Haha...", "...Devour me..."] },
+                    default: { touch: ["...More.", "...Break me."], stroke: ["...I belong to you."] }
+                }
             }
         };
 
@@ -1228,14 +1248,10 @@
             const modeKey = isPassionMode ? 'passion' : 'normal';
             const actionKey = isStroke ? 'stroke' : 'touch';
             
-            // Get Text Array
             let textArray = dialogues[currentLang][modeKey][type] ? dialogues[currentLang][modeKey][type][actionKey] : null;
-            
-            // Fallback chain
-            if (!textArray) textArray = dialogues['CN'][modeKey][type][actionKey]; // Fallback to CN
-            if (!textArray) textArray = ["……"]; // Ultimate fallback
+            if (!textArray) textArray = dialogues['CN'][modeKey][type][actionKey]; 
+            if (!textArray) textArray = ["……"]; 
 
-            // Random selection
             const text = textArray[Math.floor(Math.random() * textArray.length)];
             const action = isStroke ? (currentLang==='CN' ? "*身體因黏膩的接觸而顫抖*" : "*粘着質な接触に、身体を震わせる*") : (currentLang==='CN' ? "*視線交錯*" : "*視線が交差する*");
 
@@ -1243,7 +1259,6 @@
             document.getElementById('action-text').innerText = action;
             document.getElementById('action-text').style.opacity = "1";
 
-            // Visuals
             img.className = ""; void img.offsetWidth; 
             if (isPassionMode) img.classList.add('expression-passion');
             else if (['private', 'chest', 'neck'].includes(type)) img.classList.add('expression-pain');
@@ -1254,12 +1269,10 @@
                 setTimeout(() => wrapper.classList.remove('glitch-active'), 500);
             }
 
-            // Score Logic
             const bonus = (zone.bonus || defaultBonuses[type] || 5) * (isStroke ? 1.5 : 1);
             score = Math.min(100, score + Math.floor(bonus));
             updateUI();
 
-            // Passion Trigger & Cooldown
             if (score >= 100) {
                 if(!isPassionMode) {
                     isPassionMode = true;
@@ -1268,10 +1281,9 @@
                     const passionStart = currentLang==='CN' ? "「……啊哈。終於被填滿了……再也不會讓你逃走了喔。」" : "「……あは。ついに満たされたよ。……もう、逃がさないからね。」";
                     document.getElementById('rei-dialogue').innerText = passionStart;
                 } else {
-                    // Already in passion mode, increment counter
                     passionInteractionCount++;
                     if(passionInteractionCount >= 20) {
-                        resetGame(); // Cooldown triggered
+                        resetGame(); 
                         const cooldownText = currentLang==='CN' ? "「……哈啊……做得太過火了……稍微、讓我冷靜一下……」" : "「……はぁ……やりすぎだよ……少し、頭を冷やさせて……」";
                         document.getElementById('rei-dialogue').innerText = cooldownText;
                     }
