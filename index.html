@@ -249,7 +249,7 @@
 <body class="bg-black h-screen flex flex-col items-center justify-between mode-game">
 
     <div id="error-overlay">
-        <h2 class="text-2xl font-bold mb-4 animate-pulse"⚠️ SYSTEM FAILURE ⚠️</h2>
+        <h2 class="text-2xl font-bold mb-4 animate-pulse">⚠️ SYSTEM FAILURE ⚠️</h2>
         <div id="error-content"></div>
         <p class="mt-4 text-gray-400 text-sm">請檢查貼上的 JSON 格式是否正確。</p>
         <button onclick="location.reload()" class="mt-6 border border-red-500 text-red-500 px-4 py-2 hover:bg-red-900">REBOOT (F5)</button>
@@ -900,24 +900,51 @@
             showLoading(true);
             document.getElementById('loading-text').innerText = t.scan_start;
             const inputImg = document.getElementById('rei-image');
+
+            // --- Robust Image Loading Check (Mobile Fix) ---
+            if (!inputImg.complete || inputImg.naturalWidth === 0) {
+                await new Promise(resolve => {
+                    inputImg.onload = resolve;
+                    setTimeout(resolve, 1000); 
+                });
+            }
             
             setTimeout(async () => {
                 try {
-                    // Force using natural dimensions to ensure 0-100% maps correctly regardless of display size
-                    const dims = { width: inputImg.naturalWidth, height: inputImg.naturalHeight };
+                    // --- STEP 1: Create Scaled Canvas for Stable Detection ---
+                    // Mobile browsers struggle with massive textures (4000x3000).
+                    // We scale down to a logical processing size (e.g., max 800px) 
+                    // This fixes memory crashes and coordinate drift due to internal tiling.
+                    const processingCanvas = document.createElement('canvas');
+                    const ctx = processingCanvas.getContext('2d');
+                    
+                    const maxDim = 800; // Sufficient for face/pose, much faster/stable
+                    const scale = Math.min(maxDim / inputImg.naturalWidth, maxDim / inputImg.naturalHeight, 1);
+                    
+                    processingCanvas.width = inputImg.naturalWidth * scale;
+                    processingCanvas.height = inputImg.naturalHeight * scale;
+                    
+                    ctx.drawImage(inputImg, 0, 0, processingCanvas.width, processingCanvas.height);
+                    
+                    // --- STEP 2: Run Detection on Scaled Canvas ---
+                    const dims = { width: processingCanvas.width, height: processingCanvas.height };
+                    
+                    // Face API
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+                    let faceDetection = await faceapi.detectSingleFace(processingCanvas, options).withFaceLandmarks(true);
                     
-                    let faceDetection = await faceapi.detectSingleFace(inputImg, options).withFaceLandmarks(true);
-                    
-                    // --- PATCH: Resize results to natural dimensions explicitly ---
-                    // This ensures that even if face-api used a different scale internally, we map it back to the full image size
+                    // Resize results to match the processing canvas size
                     if (faceDetection) {
                         faceDetection = faceapi.resizeResults(faceDetection, dims);
                     }
 
-                    // PoseNet typically returns results relative to the input image element (Natural size for img)
-                    const pose = await poseNetModel.estimateSinglePose(inputImg, { flipHorizontal: false });
+                    // PoseNet
+                    // We pass the canvas, not the huge image
+                    const pose = await poseNetModel.estimateSinglePose(processingCanvas, { flipHorizontal: false });
 
+                    // --- STEP 3: Normalize to Percentages ---
+                    // Since we calculate % based on the canvas dims, and the canvas matches the image aspect ratio,
+                    // the % will be correct for the original image too.
                     const toPct = (pt) => ({ x: (pt.x / dims.width) * 100, y: (pt.y / dims.height) * 100 });
                     const toPctBox = (box) => [
                         toPct({x: box.x, y: box.y}), toPct({x: box.x + box.width, y: box.y}),
