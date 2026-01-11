@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>曉月 零的觀測室 - Tracking Ver.</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;700&family=Noto+Sans+JP:wght@300;400;700&family=Roboto:wght@300;400;700&display=swap');
+        
+        body {
+            background-color: #050505;
+            color: #e0e0e0;
+            font-family: 'Noto Sans JP', 'Noto Sans TC', 'Roboto', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            transition: background-color 1s;
+        }
+
+        /* Passion Mode Styles */
+        body.passion-mode {
+            background-color: #1a0005;
+        }
+        body.passion-mode .rei-overlay-gradient {
+            background: radial-gradient(circle, rgba(50,0,0,0.1) 0%, rgba(30,0,0,0.6) 80%, rgba(20,0,0,0.9) 100%);
+        }
+        body.passion-mode .status-bar {
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+            border-color: #ff0000;
+        }
+        body.passion-mode #score-bar {
+            background: linear-gradient(to top, #500000, #ff0000);
+            box-shadow: 0 0 10px #ff0000;
+        }
+
+        .rei-overlay-gradient {
+            background: radial-gradient(circle, rgba(26,26,46,0) 0%, rgba(13,13,13,0.4) 90%, rgba(0,0,0,0.8) 100%);
+            pointer-events: none;
+            transition: background 1s;
+        }
+
+        .status-bar {
+            box-shadow: 0 0 15px rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(138, 43, 226, 0.3);
+            backdrop-filter: blur(5px);
+            transition: all 0.5s;
+        }
+
+        .rei-container {
+            position: relative;
+            height: 70vh;
+            width: 100%;
+            max-width: 800px;
+            overflow: hidden;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(0,0,0,1);
+            cursor: crosshair;
+        }
+
+        #pan-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            min-width: 110%; 
+            min-height: 110%;
+            transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            transform-origin: 0 0;
+        }
+
+        #rei-image {
+            display: block;
+            width: auto;
+            height: auto;
+            min-width: 100%;
+            min-height: 100%;
+            pointer-events: none;
+            transition: filter 0.4s ease;
+        }
+
+        #hitbox-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: auto; 
+        }
+
+        polygon {
+            fill: transparent;
+            stroke: none;
+            cursor: pointer;
+            transition: fill 0.2s, stroke 0.2s;
+            vector-effect: non-scaling-stroke; 
+        }
+
+        /* Game Mode: Default Hidden (No Stroke, No Fill on Active) */
+        .mode-game polygon { 
+            pointer-events: all; 
+            stroke: none;
+            fill: transparent;
+        }
+        .mode-game polygon:active {
+            fill: transparent;
+            stroke: none;
+        }
+
+        /* Game Mode: Visible Option (Show Outline & Red Feedback) */
+        .mode-game.show-outlines polygon {
+            stroke: rgba(255, 255, 255, 0.15);
+            stroke-width: 1px;
+            stroke-dasharray: 2;
+        }
+        .mode-game.show-outlines polygon:active {
+            fill: rgba(255, 0, 127, 0.1);
+            stroke: rgba(255, 0, 127, 0.5);
+            stroke-width: 2px;
+            stroke-dasharray: 0;
+        }
+
+        .mode-edit polygon {
+            stroke: rgba(255, 0, 127, 0.5);
+            stroke-width: 1px;
+            stroke-dasharray: 4;
+            fill: rgba(255, 0, 127, 0.05);
+            cursor: move;
+        }
+        
+        .mode-edit polygon.selected {
+            stroke: #00ffea;
+            stroke-width: 2px;
+            stroke-dasharray: 0;
+            fill: rgba(0, 255, 234, 0.1);
+        }
+
+        .scan-flash { animation: flash-poly 1s ease-out forwards; }
+        @keyframes flash-poly {
+            0% { stroke: #00ff00; fill: rgba(0, 255, 0, 0.3); stroke-width: 3px; }
+            100% { stroke: rgba(255, 0, 127, 0.7); fill: rgba(255, 0, 127, 0.1); stroke-width: 1px; }
+        }
+
+        .vertex-handle {
+            width: 12px;
+            height: 12px;
+            background: #00ffea;
+            border: 1px solid #000;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 50; 
+            display: none;
+            pointer-events: auto; 
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        .mode-edit .vertex-handle { display: block; }
+        
+        #vertex-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        #message-box {
+            background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 10, 20, 0.98) 100%);
+            border-top: 2px solid #4b0082;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.9);
+            transition: all 0.5s;
+        }
+        
+        body.passion-mode #message-box {
+            border-top: 2px solid #ff0000;
+            background: linear-gradient(180deg, rgba(20, 0, 0, 0.95) 0%, rgba(40, 0, 0, 0.98) 100%);
+        }
+
+        .expression-shy { filter: sepia(0.2) saturate(1.4) brightness(1.1); }
+        .expression-dark { filter: grayscale(0.8) contrast(1.2) brightness(0.8); }
+        .expression-pain { filter: hue-rotate(-10deg) saturate(1.5) contrast(1.1); }
+        .expression-yandere { filter: contrast(1.4) brightness(0.9) grayscale(0.5); }
+        .expression-pleasure { filter: contrast(1.1) brightness(1.1) hue-rotate(-5deg) saturate(1.3); }
+        .expression-passion { filter: contrast(1.5) saturate(1.5) hue-rotate(-20deg) brightness(0.8) drop-shadow(0 0 10px rgba(255,0,0,0.5)); }
+
+        .glitch-active { animation: glitch-anim 0.2s linear infinite; }
+        @keyframes glitch-anim {
+            0% { transform: translate(-2px, 1px); filter: hue-rotate(90deg); }
+            50% { transform: translate(2px, -1px); filter: hue-rotate(-90deg); }
+            100% { transform: translate(0, 0); filter: none;}
+        }
+
+        /* --- UPDATED ADMIN PANEL --- */
+        .admin-panel {
+            position: fixed;
+            top: 50%;
+            left: 10px; 
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.95);
+            border: 1px solid #4b0082;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            width: 240px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 20px rgba(75, 0, 130, 0.5);
+            transition: width 0.3s, height 0.3s, padding 0.3s, opacity 0.3s;
+        }
+        
+        .admin-panel.active { display: flex; }
+
+        .admin-panel.minimized {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            overflow: hidden;
+            border-radius: 50%;
+            cursor: pointer;
+            justify-content: center;
+            align-items: center;
+            border-color: #00ffea;
+            box-shadow: 0 0 10px #00ffea;
+        }
+        
+        .admin-panel.minimized > * { display: none; }
+        .admin-panel.minimized::after {
+            content: "⚙";
+            color: #00ffea;
+            font-size: 20px;
+            display: block;
+            animation: spin 4s linear infinite;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+        }
+
+        .btn-minimize {
+            background: transparent;
+            border: none;
+            color: #a855f7;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0 5px;
+        }
+        .btn-minimize:hover { color: white; }
+
+        .btn-style {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #4b0082;
+            color: #a855f7;
+            padding: 6px 12px;
+            font-size: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.2s;
+        }
+        .btn-style:hover { background: #4b0082; color: white; }
+        
+        .admin-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #ddd;
+            padding: 5px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+        }
+        .admin-btn:hover { background: #4b0082; color: #fff; }
+        .admin-btn.danger:hover { background: #8b0000; border-color: #8b0000; }
+        .admin-btn.special {
+            background: #2e1a47;
+            border-color: #8a2be2;
+            color: #e0b0ff;
+        }
+        .admin-btn.special:hover {
+            background: #8a2be2;
+            color: #fff;
+            box-shadow: 0 0 10px #8a2be2;
+        }
+
+        .top-controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 110;
+        }
+        
+        .lang-switch {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 110;
+        }
+        
+        .writing-vertical {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+        
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #4b0082;
+            border-top: 4px solid #ff00ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .zone-label {
+            position: absolute;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 10px;
+            padding: 2px 4px;
+            pointer-events: none;
+            z-index: 40;
+            white-space: nowrap;
+            display: none;
+        }
+        .mode-edit .zone-label { display: block; }
+        
+        select.admin-select, input.admin-input {
+            background: #111;
+            color: white;
+            font-size: 11px;
+            padding: 4px;
+            border: 1px solid #444;
+            width: 100%;
+        }
+        
+        .prop-group {
+            background: #111;
+            border: 1px solid #333;
+            padding: 8px;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .file-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-top: 5px;
+        }
+
+        /* --- TOAST NOTIFICATION --- */
+        #toast-container {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+            pointer-events: none;
+        }
+        .toast {
+            background: rgba(75, 0, 130, 0.9);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: 1px solid #00ffea;
+            font-size: 12px;
+            box-shadow: 0 0 15px rgba(0, 255, 234, 0.3);
+            margin-bottom: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            text-align: center;
+        }
+        .toast.show { opacity: 1; }
+
+    </style>
+</head>
+<body class="bg-black h-screen flex flex-col items-center justify-between mode-game">
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="text-purple-300 text-xs tracking-widest animate-pulse" id="loading-text">INITIALIZING...</div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <div class="top-controls">
+        <label for="custom-image-input" class="btn-style" id="btn-load">
+            [ 讀取圖片 ]
+        </label>
+        <button class="btn-style" onclick="toggleMode()" id="btn-admin">
+            [ 管理模式 ]
+        </button>
+    </div>
+    
+    <div class="lang-switch">
+        <button class="btn-style" onclick="toggleLanguage()" id="btn-lang">
+            EN / JP
+        </button>
+    </div>
+
+    <input type="file" id="custom-image-input" accept="image/png, image/jpeg, image/jpg" class="hidden" onchange="loadCustomImage(event)">
+    <input type="file" id="import-json-input" accept=".json" class="hidden" onchange="importData(event)">
+
+    <div class="fixed right-3 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div class="flex flex-col items-center justify-between py-4 px-2 rounded-full bg-black/80 status-bar backdrop-blur-md min-h-[200px] w-[36px]">
+            <div class="text-pink-600 text-lg mb-2 animate-pulse">♥</div>
+            <div class="w-1.5 h-32 bg-gray-900 rounded-full overflow-hidden relative mb-2">
+                <div id="score-bar" class="absolute bottom-0 w-full bg-gradient-to-t from-purple-700 via-pink-600 to-red-600 transition-all duration-700" style="height: 50%;"></div>
+            </div>
+            <div class="text-sm font-bold text-white font-mono" id="score-val">50</div>
+             <span class="text-[8px] uppercase tracking-widest text-purple-400 font-bold writing-vertical mt-2 opacity-70" id="label-synch">
+                 SYNCH
+             </span>
+        </div>
+    </div>
+
+    <div id="game-container" class="rei-container" onmousemove="handleContainerMove(event)">
+        <div id="pan-wrapper">
+            <img id="rei-image" 
+                 src="http://googleusercontent.com/image_generation_content/1" 
+                 alt="曉月 零"
+                 crossorigin="anonymous">
+            
+            <svg id="hitbox-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <div id="vertex-layer"></div>
+        </div>
+        
+        <div class="absolute inset-0 rei-overlay-gradient pointer-events-none"></div>
+    </div>
+
+    <div id="admin-panel" class="admin-panel" onclick="expandAdminPanel(event)">
+        <div class="panel-header">
+            <h3 class="text-white text-xs font-bold uppercase" id="label-backend">後台控制 (Backend)</h3>
+            <button class="btn-minimize" onclick="minimizeAdminPanel(event)">[ _ ]</button>
+        </div>
+        
+        <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="chk-show-outlines" onchange="toggleHitboxVisibility()">
+            <label for="chk-show-outlines" class="text-[10px] text-gray-400" id="label-show-outlines">顯示框線 (Show Outlines)</label>
+        </div>
+
+        <div class="flex flex-col gap-1 mb-2">
+            <label class="text-[10px] text-gray-400" id="label-select-zone">選擇目標 (Select Target):</label>
+            <select id="zone-list-select" class="admin-select" onchange="selectZoneFromList(this.value)">
+                <option value="">(None)</option>
+            </select>
+        </div>
+
+        <div class="prop-group">
+            <label class="text-[9px] text-gray-500 uppercase tracking-wide">Properties</label>
+            
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-gray-400" id="label-zone-type">類型 (Type):</label>
+                <select id="zone-type-select" class="admin-select" onchange="updateSelectedZoneProp('type', this.value)">
+                    <!-- Options populated by JS -->
+                </select>
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-gray-400" id="label-zone-score">分數 (Score Bonus):</label>
+                <input type="number" id="zone-score-input" class="admin-input" min="0" max="100" onchange="updateSelectedZoneProp('bonus', parseInt(this.value))">
+            </div>
+        </div>
+
+        <button onclick="handleAutoAlign()" class="admin-btn special mt-2" id="btn-auto-scan">[ 自動掃描 (AUTO) ]</button>
+        
+        <div class="file-group">
+            <button onclick="saveData()" class="admin-btn" id="btn-save">存檔 (Save)</button>
+            <button onclick="loadData()" class="admin-btn" id="btn-load-data">讀檔 (Load)</button>
+            <button onclick="exportData()" class="admin-btn" id="btn-export">匯出 (Export)</button>
+            <label for="import-json-input" class="admin-btn" id="btn-import">匯入 (Import)</label>
+        </div>
+
+        <div class="mt-2 text-[9px] text-gray-500" id="text-instruction">
+            * 拖曳多邊形移動<br>
+            * 拖曳錨點(小圓點)變形<br>
+            * 完美貼合曲線
+        </div>
+    </div>
+
+    <div id="message-box" class="w-full max-w-2xl p-6 min-h-[160px] z-40 relative">
+        <div class="absolute -top-3 left-6 bg-purple-900 px-3 py-1 text-xs font-bold tracking-wider text-white uppercase border border-purple-500 transform -skew-x-12">
+            Akatsuki Rei
+        </div>
+        
+        <p id="rei-dialogue" class="text-sm md:text-base leading-relaxed text-gray-200 mt-2 font-light">
+            「……僕の隅々まで監視したいんだ？　いいよ、逃げたりしないから……じっくり見て。」
+        </p>
+
+        <p id="action-text" class="text-xs text-purple-400 mt-2 italic opacity-0 transition-opacity duration-300">
+            *視線が交差する*
+        </p>
+
+        <div class="mt-4 flex justify-between items-end border-t border-white/10 pt-2">
+            <span id="emotion-status" class="text-[10px] text-gray-500 uppercase tracking-widest">狀態: 監視中 (TRACKING)</span>
+            <button onclick="resetGame()" class="text-[10px] uppercase tracking-widest text-gray-600 hover:text-red-500 transition duration-300" id="btn-break">
+                [ 斷開連接 ]
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let BASE_IMAGE = "http://googleusercontent.com/image_generation_content/1";
+        let isDefaultImage = true; 
+        let currentLang = 'CN'; 
+        
+        const translations = {
+            CN: {
+                load: "[ 讀取圖片 ]",
+                admin: "[ 管理模式 ]",
+                play: "[ 開始觀測 ]",
+                synch: "SYNCH", 
+                backend: "後台控制 (Backend)",
+                selectZone: "選擇目標 (Select Target):",
+                zoneType: "類型 (Type):",
+                zoneScore: "分數 (Score Bonus):",
+                showOutlines: "顯示框線 (Show Outlines)",
+                auto: "[ 自動掃描 (AUTO) ]",
+                save: "存檔 (Save)",
+                loadData: "讀檔 (Load)",
+                export: "匯出 (Export)",
+                import: "匯入 (Import)",
+                instr: "* 拖曳多邊形移動<br>* 拖曳錨點(小圓點)變形<br>* 完美貼合曲線",
+                break: "[ 斷開連接 ]",
+                status_tracking: "狀態: 監視中 (TRACKING)",
+                status_obsession: "狀態: 監禁中 (OBSESSION)",
+                status_breakdown: "狀態: 崩壞中 (BREAKDOWN)",
+                status_passion: "狀態: 激情模式 (PASSION)",
+                head: "頭部 (HEAD)",
+                eyes: "眼部 (EYES)",
+                lips: "唇部 (LIPS)",
+                neck: "頸部 (NECK)",
+                chest: "胸部 (CHEST)",
+                abdomen: "腹部 (ABDOMEN)",
+                thigh: "大腿 (THIGHS)",
+                calf: "小腿 (CALVES)",
+                foot: "腳部 (FOOT)",
+                arm_upper: "上臂 (UPPER ARM)",
+                arm_lower: "下臂 (LOWER ARM)",
+                hand: "手掌 (HAND)",
+                private: "私密 (PRIVATE)",
+                scan_start: "正在啟動多邊形骨骼偵測...",
+                scan_success: "掃描完成。已生成向量多邊形。",
+                scan_fail: "掃描失敗：無法辨識或權限受限。",
+                scan_no_face: "未檢測到臉部或身體，請使用清晰全身/半身照。",
+                scan_cors_error: "錯誤：請先點擊 [讀取圖片] 上傳您自己的 JPG/PNG 檔案。",
+                save_success: "存檔成功！Rei 已被保存。",
+                load_success: "讀檔成功！設定已還原。",
+                load_fail: "無存檔紀錄。"
+            },
+            JP: {
+                load: "[ 画像読込 ]",
+                admin: "[ 管理モード ]",
+                play: "[ 観測開始 ]",
+                synch: "SYNCH", 
+                backend: "バックエンド制御",
+                selectZone: "対象選択 (Select Target):",
+                zoneType: "タイプ (Type):",
+                zoneScore: "スコア (Score Bonus):",
+                showOutlines: "枠線表示 (Show Outlines)",
+                auto: "[ 自動スキャン (AUTO) ]",
+                save: "保存 (Save)",
+                loadData: "読込 (Load)",
+                export: "出力 (Export)",
+                import: "入力 (Import)",
+                instr: "* ポリゴンをドラッグで移動<br>* アンカーをドラッグで変形<br>* 曲線にフィットさせる",
+                break: "[ 接続切断 ]",
+                status_tracking: "状態: 監視中 (TRACKING)",
+                status_obsession: "状態: 監禁中 (OBSESSION)",
+                status_breakdown: "状態: 崩壊中 (BREAKDOWN)",
+                status_passion: "状態: 激情モード (PASSION)",
+                head: "頭部 (HEAD)",
+                eyes: "眼部 (EYES)",
+                lips: "唇 (LIPS)",
+                neck: "頸部 (NECK)",
+                chest: "胸部 (CHEST)",
+                abdomen: "腹部 (ABDOMEN)",
+                thigh: "大腿 (THIGHS)",
+                calf: "小腿 (CALVES)",
+                foot: "足部 (FOOT)",
+                arm_upper: "上腕 (UPPER ARM)",
+                arm_lower: "前腕 (LOWER ARM)",
+                hand: "手掌 (HAND)",
+                private: "秘密 (PRIVATE)",
+                scan_start: "骨格検出を開始します...",
+                scan_success: "スキャン完了。ポリゴンを生成しました。",
+                scan_fail: "スキャン失敗: 認識不可または権限エラー。",
+                scan_no_face: "顔または体を検出できません。鮮明な画像を使用してください。",
+                scan_cors_error: "エラー: 先に [画像読込] からJPG/PNGをアップロードしてください。",
+                save_success: "保存完了。Reiは記録されました。",
+                load_success: "読込完了。設定を復元しました。",
+                load_fail: "保存データがありません。"
+            },
+            EN: {
+                load: "[ LOAD IMAGE ]",
+                admin: "[ ADMIN MODE ]",
+                play: "[ START ]",
+                synch: "SYNCH",
+                backend: "BACKEND CONTROL",
+                selectZone: "SELECT TARGET:",
+                zoneType: "TYPE:",
+                zoneScore: "SCORE BONUS:",
+                showOutlines: "SHOW OUTLINES",
+                auto: "[ AUTO SCAN ]",
+                save: "SAVE",
+                loadData: "LOAD",
+                export: "EXPORT",
+                import: "IMPORT",
+                instr: "* Drag Polygon to move.<br>* Drag Anchor Points to deform.<br>* Fit curves perfectly.",
+                break: "[ BREAK CONNECTION ]",
+                status_tracking: "STATUS: TRACKING",
+                status_obsession: "STATUS: OBSESSION",
+                status_breakdown: "STATUS: BREAKDOWN",
+                status_passion: "STATUS: PASSION",
+                head: "HEAD",
+                eyes: "EYES",
+                lips: "LIPS",
+                neck: "NECK",
+                chest: "CHEST",
+                abdomen: "ABDOMEN",
+                thigh: "THIGHS",
+                calf: "CALVES",
+                foot: "FOOT",
+                arm_upper: "UPPER ARM",
+                arm_lower: "LOWER ARM",
+                hand: "HAND",
+                private: "PRIVATE",
+                scan_start: "INITIATING POLYGON SKELETON TRACKING...",
+                scan_success: "SCAN COMPLETE. POLYGONS GENERATED.",
+                scan_fail: "SCAN FAILED: PERMISSION OR ERROR.",
+                scan_no_face: "NO FACE/BODY DETECTED.",
+                scan_cors_error: "ERROR: Please [LOAD IMAGE] first.",
+                save_success: "SAVED.",
+                load_success: "LOADED.",
+                load_fail: "NO DATA FOUND."
+            }
+        };
+
+        const zoneKeys = ['head', 'eyes', 'lips', 'neck', 'chest', 'abdomen', 'arm_upper', 'arm_lower', 'hand', 'private', 'thigh', 'calf', 'foot'];
+
+        const defaultBonuses = {
+            head: 2, eyes: 5, lips: 8, neck: 10, chest: 15, abdomen: 5, 
+            thigh: 6, calf: 4, foot: 10, arm_upper: 4, arm_lower: 5, hand: 8, private: 20
+        };
+
+        let hitboxes = [
+            { id: 1, type: 'head', points: [{x:20, y:5}, {x:80, y:5}, {x:80, y:25}, {x:20, y:25}], bonus: 2 }
+        ];
+
+        let isEditMode = false;
+        let selectedZoneId = null;
+        let modelsLoaded = false;
+        let poseNetModel = null;
+        let score = 50;
+        let isPassionMode = false;
+        let passionInteractionCount = 0; 
+        let showOutlinesInGame = false;
+
+        let interactionStart = { x: 0, y: 0, time: 0 };
+        let isInteracting = false;
+        let activeZone = null;
+
+        // --- TOAST FUNCTION ---
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast show';
+            toast.innerText = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => { container.removeChild(toast); }, 300);
+            }, 3000);
+        }
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'CN' ? 'JP' : 'CN';
+            document.getElementById('btn-lang').innerText = currentLang === 'CN' ? 'CN / JP' : 'JP / CN';
+            updateLanguageUI();
+        }
+
+        function updateLanguageUI() {
+            const t = translations[currentLang];
+            document.getElementById('btn-load').innerText = t.load;
+            document.getElementById('btn-admin').innerText = isEditMode ? t.play : t.admin;
+            document.getElementById('label-synch').innerText = t.synch;
+            document.getElementById('label-backend').innerText = t.backend;
+            document.getElementById('label-select-zone').innerText = t.selectZone;
+            document.getElementById('label-zone-type').innerText = t.zoneType;
+            document.getElementById('label-zone-score').innerText = t.zoneScore;
+            document.getElementById('label-show-outlines').innerText = t.showOutlines;
+            document.getElementById('btn-auto-scan').innerText = t.auto;
+            document.getElementById('btn-save').innerText = t.save;
+            document.getElementById('btn-load-data').innerText = t.loadData;
+            document.getElementById('btn-export').innerText = t.export;
+            document.getElementById('btn-import').innerText = t.import;
+            document.getElementById('text-instruction').innerHTML = t.instr;
+            document.getElementById('btn-break').innerText = t.break;
+            
+            const selType = document.getElementById('zone-type-select');
+            const currentVal = selType.value;
+            selType.innerHTML = '';
+            zoneKeys.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.text = t[key];
+                selType.appendChild(opt);
+            });
+            if(currentVal) selType.value = currentVal;
+
+            updateZoneListUI(); 
+            updateUI(); 
+        }
+
+        function minimizeAdminPanel(e) {
+            e.stopPropagation();
+            const panel = document.getElementById('admin-panel');
+            panel.classList.add('minimized');
+        }
+
+        function expandAdminPanel(e) {
+            const panel = document.getElementById('admin-panel');
+            if (panel.classList.contains('minimized')) {
+                panel.classList.remove('minimized');
+            }
+        }
+
+        function saveData() {
+            const data = {
+                image: BASE_IMAGE,
+                hitboxes: hitboxes,
+                isDefaultImage: isDefaultImage,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('rei_touch_game_data', JSON.stringify(data));
+            showToast(translations[currentLang].save_success);
+        }
+
+        function loadData() {
+            const json = localStorage.getItem('rei_touch_game_data');
+            if (!json) {
+                showToast(translations[currentLang].load_fail);
+                return;
+            }
+            applyData(JSON.parse(json));
+            showToast(translations[currentLang].load_success);
+        }
+
+        function exportData() {
+            const data = {
+                image: BASE_IMAGE,
+                hitboxes: hitboxes,
+                isDefaultImage: isDefaultImage,
+                timestamp: Date.now()
+            };
+            const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rei_config_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    applyData(data);
+                    showToast(translations[currentLang].load_success);
+                } catch (err) {
+                    showToast("Invalid File");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function applyData(data) {
+            if (data.image) {
+                BASE_IMAGE = data.image;
+                document.getElementById('rei-image').src = BASE_IMAGE;
+            }
+            if (data.hitboxes) {
+                hitboxes = data.hitboxes;
+            }
+            if (data.isDefaultImage !== undefined) {
+                isDefaultImage = data.isDefaultImage;
+            }
+            renderHitboxes();
+        }
+
+        function toggleHitboxVisibility() {
+            showOutlinesInGame = document.getElementById('chk-show-outlines').checked;
+            const b = document.body;
+            if (showOutlinesInGame) b.classList.add('show-outlines');
+            else b.classList.remove('show-outlines');
+        }
+
+        function startInteraction(e, zone) {
+            if (isEditMode) return;
+            e.preventDefault();
+            isInteracting = true;
+            activeZone = zone;
+            interactionStart = { 
+                x: e.clientX || e.touches[0].clientX, 
+                y: e.clientY || e.touches[0].clientY,
+                time: Date.now() 
+            };
+            
+            document.addEventListener('mouseup', endInteraction);
+            document.addEventListener('touchend', endInteraction);
+        }
+
+        function endInteraction(e) {
+            if (!isInteracting || !activeZone) return;
+            
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            
+            const dx = clientX - interactionStart.x;
+            const dy = clientY - interactionStart.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const timeDiff = Date.now() - interactionStart.time;
+
+            const isStroke = (dist > 20 && timeDiff > 150); 
+            
+            triggerReaction(activeZone, isStroke);
+
+            isInteracting = false;
+            activeZone = null;
+            document.removeEventListener('mouseup', endInteraction);
+            document.removeEventListener('touchend', endInteraction);
+        }
+
+        async function loadModels() {
+            if (modelsLoaded) return true;
+            const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+            try {
+                showLoading(true);
+                await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
+                await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODEL_URL);
+                poseNetModel = await posenet.load({
+                    architecture: 'MobileNetV1',
+                    outputStride: 16,
+                    inputResolution: { width: 512, height: 512 },
+                    multiplier: 0.75
+                });
+                modelsLoaded = true;
+                showLoading(false);
+                return true;
+            } catch (e) {
+                console.error(e);
+                showLoading(false);
+                showToast("Models failed to load.");
+                return false;
+            }
+        }
+
+        async function handleAutoAlign() {
+            const t = translations[currentLang];
+            if (isDefaultImage) { showToast(t.scan_cors_error); return; }
+            if (!modelsLoaded) {
+                const success = await loadModels();
+                if (!success) return;
+            }
+
+            showLoading(true);
+            document.getElementById('loading-text').innerText = t.scan_start;
+            const inputImg = document.getElementById('rei-image');
+            
+            setTimeout(async () => {
+                try {
+                    const dims = { width: inputImg.naturalWidth, height: inputImg.naturalHeight };
+                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+                    const faceDetection = await faceapi.detectSingleFace(inputImg, options).withFaceLandmarks(true);
+                    const pose = await poseNetModel.estimateSinglePose(inputImg, { flipHorizontal: false });
+
+                    const toPct = (pt) => ({ x: (pt.x / dims.width) * 100, y: (pt.y / dims.height) * 100 });
+                    const toPctBox = (box) => [
+                        toPct({x: box.x, y: box.y}), toPct({x: box.x + box.width, y: box.y}),
+                        toPct({x: box.x + box.width, y: box.y + box.height}), toPct({x: box.x, y: box.y + box.height})
+                    ];
+                    const getPoly = (p1, p2, w=0.5) => {
+                        const x1 = p1.position.x, y1 = p1.position.y;
+                        const x2 = p2.position.x, y2 = p2.position.y;
+                        const len = Math.sqrt(Math.pow(x2-x1, 2) + Math.pow(y2-y1, 2));
+                        const t = len * w; 
+                        const dx = x2 - x1, dy = y2 - y1;
+                        const nx = -dy / len, ny = dx / len;
+                        const px = nx * t / 2, py = ny * t / 2;
+                        return [toPct({x:x1+px,y:y1+py}), toPct({x:x2+px,y:y2+py}), toPct({x:x2-px,y:y2-py}), toPct({x:x1-px,y:y1-py})];
+                    };
+
+                    let newHitboxes = [];
+                    let idCounter = 1;
+
+                    if (faceDetection) {
+                        const lm = faceDetection.landmarks;
+                        const fb = faceDetection.detection.box; 
+                        newHitboxes.push({ id: idCounter++, type: 'head', bonus: defaultBonuses.head, points: toPctBox(fb) });
+                        
+                        const le = lm.getLeftEye(), re = lm.getRightEye();
+                        const ex = Math.min(...le.map(p=>p.x), ...re.map(p=>p.x));
+                        const ey = Math.min(...le.map(p=>p.y), ...re.map(p=>p.y));
+                        const ew = Math.max(...le.map(p=>p.x), ...re.map(p=>p.x)) - ex;
+                        const eh = Math.max(...le.map(p=>p.y), ...re.map(p=>p.y)) - ey;
+                        newHitboxes.push({ id: idCounter++, type: 'eyes', bonus: defaultBonuses.eyes, points: toPctBox({x:ex-5, y:ey-5, width:ew+10, height:eh+10}) });
+
+                        const m = lm.getMouth();
+                        const mx = Math.min(...m.map(p=>p.x)), my = Math.min(...m.map(p=>p.y));
+                        const mw = Math.max(...m.map(p=>p.x)) - mx, mh = Math.max(...m.map(p=>p.y)) - my;
+                        newHitboxes.push({ id: idCounter++, type: 'lips', bonus: defaultBonuses.lips, points: toPctBox({x:mx-2, y:my-2, width:mw+4, height:mh+4}) });
+                    }
+
+                    if (pose && pose.keypoints) {
+                        const kp = pose.keypoints;
+                        const find = (n) => kp.find(k => k.part === n);
+                        const ls=find('leftShoulder'), rs=find('rightShoulder'), le=find('leftElbow'), re=find('rightElbow');
+                        const lw=find('leftWrist'), rw=find('rightWrist'), lh=find('leftHip'), rh=find('rightHip');
+                        const lk=find('leftKnee'), rk=find('rightKnee'), la=find('leftAnkle'), ra=find('rightAnkle');
+                        const C = 0.1;
+
+                        if(ls.score>C && rs.score>C) {
+                            const cx = (ls.position.x+rs.position.x)/2, cy = Math.min(ls.position.y, rs.position.y)-dims.height*0.05;
+                            newHitboxes.push({ id: idCounter++, type: 'neck', bonus: defaultBonuses.neck, points: toPctBox({x:cx-20, y:cy, width:40, height:40}) }); 
+                        }
+                        if(ls.score>C && le.score>C) newHitboxes.push({id:idCounter++, type:'arm_upper', bonus: defaultBonuses.arm_upper, points:getPoly(ls,le,0.4)});
+                        if(rs.score>C && re.score>C) newHitboxes.push({id:idCounter++, type:'arm_upper', bonus: defaultBonuses.arm_upper, points:getPoly(rs,re,0.4)});
+                        if(le.score>C && lw.score>C) {
+                            newHitboxes.push({id:idCounter++, type:'arm_lower', bonus: defaultBonuses.arm_lower, points:getPoly(le,lw,0.3)});
+                            newHitboxes.push({id:idCounter++, type:'hand', bonus: defaultBonuses.hand, points:toPctBox({x:lw.position.x-20, y:lw.position.y-20, width:40, height:40})});
+                        }
+                        if(re.score>C && rw.score>C) {
+                            newHitboxes.push({id:idCounter++, type:'arm_lower', bonus: defaultBonuses.arm_lower, points:getPoly(re,rw,0.3)});
+                            newHitboxes.push({id:idCounter++, type:'hand', bonus: defaultBonuses.hand, points:toPctBox({x:rw.position.x-20, y:rw.position.y-20, width:40, height:40})});
+                        }
+                        if(ls.score>C && lh.score>C && rh.score>C) {
+                            newHitboxes.push({id:idCounter++, type:'chest', bonus: defaultBonuses.chest, points: [toPct(ls.position), toPct(rs.position), toPct(rh.position), toPct(lh.position)]});
+                            const hx = (lh.position.x+rh.position.x)/2, hy = (lh.position.y+rh.position.y)/2;
+                            newHitboxes.push({id:idCounter++, type:'private', bonus: defaultBonuses.private, points: toPctBox({x:hx-30, y:hy, width:60, height:50})});
+                        }
+                        if(lh.score>C && lk.score>C) newHitboxes.push({id:idCounter++, type:'thigh', bonus: defaultBonuses.thigh, points:getPoly(lh,lk,0.5)});
+                        if(rh.score>C && rk.score>C) newHitboxes.push({id:idCounter++, type:'thigh', bonus: defaultBonuses.thigh, points:getPoly(rh,rk,0.5)});
+                        
+                        if(lk.score>C && la.score>C) {
+                            newHitboxes.push({id:idCounter++, type:'calf', bonus: defaultBonuses.calf, points:getPoly(lk,la,0.35)});
+                            newHitboxes.push({id:idCounter++, type:'foot', bonus: defaultBonuses.foot, points:toPctBox({x:la.position.x-20, y:la.position.y, width:40, height:30})});
+                        }
+                        if(rk.score>C && ra.score>C) {
+                            newHitboxes.push({id:idCounter++, type:'calf', bonus: defaultBonuses.calf, points:getPoly(rk,ra,0.35)});
+                            newHitboxes.push({id:idCounter++, type:'foot', bonus: defaultBonuses.foot, points:toPctBox({x:ra.position.x-20, y:ra.position.y, width:40, height:30})});
+                        }
+                    }
+
+                    if (newHitboxes.length > 0) {
+                        hitboxes = newHitboxes;
+                        renderHitboxes(true);
+                        showToast(t.scan_success);
+                    } else { showToast(t.scan_no_face); }
+                } catch(e) { console.error(e); showToast(t.scan_fail); }
+                showLoading(false);
+            }, 100);
+        }
+
+        function showLoading(show) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; }
+
+        function renderHitboxes(flash = false) {
+            const svgLayer = document.getElementById('hitbox-svg');
+            const vertexLayer = document.getElementById('vertex-layer');
+            svgLayer.innerHTML = '';
+            vertexLayer.innerHTML = '';
+            updateZoneListUI();
+
+            const zOrder = { 'lips': 100, 'eyes': 90, 'private': 80, 'hand': 70, 'foot': 70, 'head': 50, 'neck': 40, 'arm_lower': 30, 'arm_upper': 20, 'calf': 20, 'thigh': 20, 'chest': 10, 'abdomen': 10 };
+            const sorted = [...hitboxes].sort((a,b) => (zOrder[a.type]||0) - (zOrder[b.type]||0));
+
+            sorted.forEach(zone => {
+                const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                poly.setAttribute("points", zone.points.map(p => `${p.x},${p.y}`).join(" "));
+                if (flash) poly.classList.add('scan-flash');
+                if (selectedZoneId === zone.id) poly.classList.add('selected');
+                
+                if (isEditMode) {
+                    poly.onmousedown = (e) => startDragPoly(e, zone.id);
+                    poly.onclick = (e) => { e.stopPropagation(); selectZone(zone.id); };
+                } else {
+                    poly.onmousedown = (e) => startInteraction(e, zone);
+                    poly.ontouchstart = (e) => startInteraction(e, zone);
+                }
+                svgLayer.appendChild(poly);
+
+                if (isEditMode && (selectedZoneId === zone.id || !selectedZoneId)) {
+                    zone.points.forEach((p, idx) => {
+                        const h = document.createElement('div');
+                        h.className = 'vertex-handle';
+                        h.style.left = p.x + '%';
+                        h.style.top = p.y + '%';
+                        h.onmousedown = (e) => startDragVertex(e, zone.id, idx);
+                        vertexLayer.appendChild(h);
+                    });
+                }
+            });
+            const ls = document.getElementById('zone-list-select');
+            if(ls) ls.value = selectedZoneId || "";
+        }
+
+        function toggleMode() {
+            isEditMode = !isEditMode;
+            document.body.className = isEditMode ? 'bg-black h-screen flex flex-col items-center justify-between mode-edit' : 'bg-black h-screen flex flex-col items-center justify-between mode-game';
+            
+            const b = document.body;
+            if (showOutlinesInGame) b.classList.add('show-outlines');
+            else b.classList.remove('show-outlines');
+
+            if (isPassionMode && !isEditMode) document.body.classList.add('passion-mode');
+            const admin = document.getElementById('admin-panel');
+            if(isEditMode) { admin.classList.add('active'); if(!modelsLoaded) loadModels(); }
+            else { admin.classList.remove('active'); selectedZoneId = null; }
+            renderHitboxes();
+        }
+
+        function selectZone(id) {
+            selectedZoneId = id;
+            const zone = hitboxes.find(z => z.id === id);
+            if (zone) {
+                document.getElementById('zone-type-select').value = zone.type;
+                document.getElementById('zone-score-input').value = zone.bonus || defaultBonuses[zone.type] || 5;
+            }
+            renderHitboxes();
+        }
+
+        function selectZoneFromList(val) {
+            if(!val) { selectedZoneId = null; renderHitboxes(); return; }
+            selectZone(parseInt(val));
+        }
+
+        function updateZoneListUI() {
+            const list = document.getElementById('zone-list-select');
+            list.innerHTML = '<option value="">(None)</option>';
+            const t = translations[currentLang];
+            hitboxes.forEach(z => {
+                const opt = document.createElement('option');
+                opt.value = z.id;
+                const typeName = t[z.type] ? t[z.type].split(' ')[0] : z.type;
+                opt.text = `#${z.id} - ${typeName}`;
+                list.appendChild(opt);
+            });
+            list.value = selectedZoneId || "";
+        }
+
+        function updateSelectedZoneProp(prop, val) {
+            if (!selectedZoneId) return;
+            const zone = hitboxes.find(z => z.id === selectedZoneId);
+            if (zone) {
+                zone[prop] = val;
+                if (prop === 'type' && !zone.bonus) zone.bonus = defaultBonuses[val] || 5;
+                renderHitboxes();
+            }
+        }
+
+        let dragItem=null, dragStart={x:0,y:0}, ptsStart=[];
+        function startDragPoly(e, id) {
+            if (!isEditMode) return;
+            dragItem = hitboxes.find(z => z.id === id);
+            dragStart = { x: e.clientX, y: e.clientY };
+            ptsStart = JSON.parse(JSON.stringify(dragItem.points));
+            selectZone(id);
+            document.addEventListener('mousemove', onDragPoly);
+            document.addEventListener('mouseup', stopDragPoly);
+        }
+        function onDragPoly(e) {
+            if (!dragItem) return;
+            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
+            const dx = ((e.clientX-dragStart.x)/r.width)*100, dy = ((e.clientY-dragStart.y)/r.height)*100;
+            dragItem.points = ptsStart.map(p => ({ x: Math.max(0, Math.min(100, p.x+dx)), y: Math.max(0, Math.min(100, p.y+dy)) }));
+            renderHitboxes();
+        }
+        function stopDragPoly() { dragItem=null; document.removeEventListener('mousemove', onDragPoly); document.removeEventListener('mouseup', stopDragPoly); }
+
+        let dragV = null;
+        function startDragVertex(e, zid, idx) {
+            if (!isEditMode) return;
+            e.stopPropagation();
+            dragV = { zid, idx };
+            selectZone(zid);
+            document.addEventListener('mousemove', onDragV);
+            document.addEventListener('mouseup', stopDragV);
+        }
+        function onDragV(e) {
+            if (!dragV) return;
+            const r = document.getElementById('pan-wrapper').getBoundingClientRect();
+            const px = ((e.clientX-r.left)/r.width)*100, py = ((e.clientY-r.top)/r.height)*100;
+            const z = hitboxes.find(h=>h.id===dragV.zid);
+            if(z) { z.points[dragV.idx] = {x:Math.max(0,Math.min(100,px)), y:Math.max(0,Math.min(100,py))}; renderHitboxes(); }
+        }
+        function stopDragV() { dragV=null; document.removeEventListener('mousemove', onDragV); document.removeEventListener('mouseup', stopDragV); }
+
+        function handleContainerMove(e) {
+            if (dragItem || dragV || isInteracting) return;
+            const c = e.currentTarget, w = document.getElementById('pan-wrapper');
+            if (w.offsetWidth <= c.offsetWidth) return;
+            const rect = c.getBoundingClientRect();
+            const xp = Math.max(0, Math.min(1, (e.clientX-rect.left)/c.offsetWidth));
+            const yp = Math.max(0, Math.min(1, (e.clientY-rect.top)/c.offsetHeight));
+            w.style.transform = `translate(${(c.offsetWidth-w.offsetWidth)*xp}px, ${(c.offsetHeight-w.offsetHeight)*yp}px)`;
+        }
+
+        function loadCustomImage(e) {
+            const f = e.target.files[0];
+            if(!f) return;
+            const r = new FileReader();
+            r.onload = function(ev) {
+                BASE_IMAGE = ev.target.result;
+                isDefaultImage = false;
+                const img = document.getElementById('rei-image');
+                img.src = BASE_IMAGE;
+                img.style.width="auto"; img.style.height="auto";
+                if(!isEditMode) toggleMode();
+            };
+            r.readAsDataURL(f);
+        }
+
+        const dialogues = {
+            CN: {
+                normal: {
+                    head: { touch: ["「……頭髮亂了？還是只是想摸？」", "「……嗯？怎麼了，一直盯著看。」", "「……這視線，不討厭。」"], stroke: ["「……嗯……撫摸的方式，很溫柔呢。再多一點？」", "「……好像小狗一樣被摸著……不過，這感覺不錯。」", "「……手指穿過頭髮的感覺……很舒服。」"] },
+                    eyes: { touch: ["「……看著我。只看著我。」", "「……我的眼睛裡，只有你喔。」", "「……逃不掉的，你的視網膜已經烙印上我了。」"], stroke: ["「……想把我的視線也全部佔有嗎？」", "「……這樣遮住眼睛，就只能感受你的手指了。」", "「……嗯……眼皮好熱……」"] },
+                    lips: { touch: ["「……想接吻嗎？」", "「……唇，是為了叫你的名字而存在的。」", "「……手指，想被吃掉嗎？」"], stroke: ["「……嗯っ……用手指堵住嘴唇……喜歡這樣？」", "「……呼……你的指尖，有甜甜的味道。」", "「……再這樣弄……我會忍不住咬下去的。」"] },
+                    neck: { touch: ["「……那是急所喔。想殺了我嗎？還是……」", "「……項圈的痕跡，想再增加嗎？」", "「……脈搏跳得很快？……那是因為你啊。」"], stroke: ["「……啊、那裡……沿著脖頸撫摸，會發抖的……」", "「……像是在確認所有權一樣……」", "「……嗯……喉嚨深處，都變熱了……」"] },
+                    chest: { touch: ["「……聽得到嗎？這骯髒的跳動聲。」", "「……這裡面全都是黑色的感情喔，即使這樣也沒關係？」", "「……痛嗎？不，這是興奮。」"], stroke: ["「……連心臟都要被你掏出來了……把我的全部給你。」", "「……撫摸肋骨……像是在確認形狀一樣……」", "「……哈啊……胸口好悶……被你的愛填滿了……」"] },
+                    abdomen: { touch: ["「……肚子，沒什麼好看的吧？」", "「……好癢。別鬧了。」", "「……想把這裡剖開看看嗎？」"], stroke: ["「……嗯……手指在爬……好奇怪的感覺……」", "「……啊……那裡是內臟的位置……別按……」", "「……要融化了……肚子裡熱熱的……」"] },
+                    thigh: { touch: ["「……想睡膝枕嗎？還是……想讓我動不了？」", "「……這雙腿，是為了走向你而存在的。」", "「……別捏，會有痕跡的。」"], stroke: ["「……哈啊……大腿內側……很敏感的……」", "「……指尖的軌跡……留下來了……」", "「……別這樣慢騰騰地摸……會想要更多……」"] },
+                    calf: { touch: ["「……小腿？奇怪的愛好。」", "「……要幫我脫靴子嗎？」", "「……隨你喜歡。」"], stroke: ["「……沿著肌肉線條……嗯……」", "「……要按摩嗎？……隨便你。」", "「……連這種地方都……你真是貪心。」"] },
+                    foot: { touch: ["「……想舔鞋底嗎？……開玩笑的。」", "「……要在這裡跪下嗎？」", "「……真是個變態。」"], stroke: ["「……腳踝……別抓那麼緊……」", "「……要親吻那裡也可以喔……如果是你的話。」", "「……完全服從……這就是你想要的吧？」"] },
+                    arm_upper: { touch: ["「……想被抱緊嗎？」", "「……隨時都可以抱住你喔。」", "「……抓緊了，別放手。」"], stroke: ["「……二頭肌？……沒那麼結實吧。」", "「……撫摸手臂……是在撒嬌嗎？」", "「……體溫……傳過來了……」"] },
+                    arm_lower: { touch: ["「……手腕，看得很清楚吧。」", "「……這裡的血管，連著心臟喔。」", "「……想銬起來嗎？」"], stroke: ["「……血管浮起來了？……因為興奮啊。」", "「……慢慢地……像蛇一樣纏繞……」", "「……嗯……好癢……」"] },
+                    hand: { touch: ["……好溫暖。只有你的手能讓我變回人類。」", "「……牽手？像小孩子一樣。」", "「……別放開喔。」"], stroke: ["「……手指纏在一起……就像解不開的結。」", "「……手掌的溫度……好舒服……」", "「……想把你指尖的指紋，都變成我的。」"] },
+                    private: { touch: ["「……！ 那裡是……你的特權。」", "「……想確認嗎？我是屬於誰的。」", "「……不壞……這種感覺。」"], stroke: ["「……啊……不行，那麼執拗地……會變得奇怪的……！」", "「……嗚……再深一點……觸碰我……」", "「……哈啊、哈啊……腦袋要融化了……」"] }
+                },
+                passion: {
+                    head: { touch: ["「把我的腦漿攪亂吧……想裝滿你。」", "「……思考停止了……只有你……」", "「……好疼……但是好舒服……」"], stroke: ["「乖孩子……是在調教我嗎？啊哈哈，再來。」", "「……把我的理智全部抹消掉吧……」", "「……撫摸？不，這是侵蝕……」"] },
+                    eyes: { touch: ["「除了你什麼都不想看。……乾脆戳瞎好了。」", "「……你的倒影……要把眼球燒壞了。」", "「……黑暗中只有你……太棒了……」"], stroke: ["「視野被你填滿……這是最棒的地獄。」", "「……遮住眼睛……然後做什麼都可以喔……」", "「……眼淚……止不住……因為太愛你了……」"] },
+                    lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
+                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……留下痕跡。讓誰都看得出我是你的東西。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
+                    chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
+                    abdomen: { touch: ["「……內臟……要爛掉了……」", "「……好熱……肚子裡有火……」", "「……穿透我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
+                    thigh: { touch: ["「……腿斷了就哪也去不了了……好啊，打斷它。」", "「……這雙腿只會為你張開……」", "「……顫抖……停不下來……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
+                    calf: { touch: ["「……切斷跟腱也可以喔……這樣就逃不掉了。」", "「……無法站立的玩偶……那就是我……」", "「……隨你處置……」"], stroke: ["「……像蛇一樣爬上來……你的慾望……」", "「……肌肉在抽搐……感受到了嗎？……」", "「……更加……凌辱我……」"] },
+                    foot: { touch: ["「……舔你的鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……腳尖都在發抖……快瘋了……」", "「……鎖鏈的聲音……聽見了嗎？……」", "「……絕對服從……身心都是……」"] },
+                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["「……指甲……抓破皮膚……血的味道……」", "「……把你刻在我的肉體上……」", "「……束縛帶……還不夠緊……」"] },
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……啊……血在逆流……」", "「……手腕……折斷也可以……」", "「……已經……動不了了……」"] },
+                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
+                    private: { touch: ["「……啊哈♡ 更多、更多破壞我……除了你什麼都感覺不到！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
+                }
+            },
+            JP: {
+                normal: {
+                    head: { touch: ["「……髪に触れた？　それとも、ただ見てるだけ？」", "「……ん？　どうしたの、じっと見つめて。」", "「……その視線、嫌いじゃないよ。」"], stroke: ["「……ん……撫で方が、優しいね。もっと、して？」", "「……犬みたいにわしゃわしゃして……悪くないけど。」", "「……指が髪を梳く感覚……気持ちいい。」"] },
+                    eyes: { touch: ["「……見て。僕だけを見て。」", "「……僕の目には、君しか映ってないよ。」", "「……逃げられないよ。君の網膜に僕を焼き付けて。」"], stroke: ["「……僕の視界も全部独占したいの？」", "「……目隠しプレイ？　君の指しか感じられないね。」", "「……ん……瞼が熱い……」"] },
+                    lips: { touch: ["「……キス、したいの？」", "「……唇は、君の名前を呼ぶためにあるんだよ。」", "「……指、食べられたいの？」"], stroke: ["「……んっ……指で唇を塞ぐの……好きだね。」", "「……ふぅ……君の指先、甘い味がする。」", "「……そんなに弄ったら……噛みついちゃうよ？」"] },
+                    neck: { touch: ["「……そこは急所だよ。殺すつもり？それとも……」", "「……首輪の跡、もっと増やしたい？」", "「……脈が速い？……君のせいだよ。」"], stroke: ["「……あっ、そこ……首筋をなぞられると、ゾクゾクする……。」", "「……所有権を確認するみたいに……」", "「……ん……喉の奥が、熱くなる……」"] },
+                    chest: { touch: ["「……聞こえる？　この汚い心音。」", "「……中は真っ黒な感情で一杯だよ。それでもいいの？」", "「……痛い？　ううん、興奮してる。」"], stroke: ["……心臓まで、君の手で掴み出してよ。僕の中身、全部あげるから。」", "「……肋骨をなぞって……形を確かめるみたいに……」", "「……はぁ……胸が苦しい……君の愛で満たされて……」"] },
+                    abdomen: { touch: ["「……お腹、見ても面白くないでしょ？」", "「……くすぐったい。やめてよ。」", "「……ここを裂いて、中を見たい？」"], stroke: ["「……ん……指が這う……変な感じ……」", "「……あっ……そこは内臓の位置……押さないで……」", "「……溶けそう……お腹の中が熱い……」"] },
+                    thigh: { touch: ["「……膝枕でもしてほしいの？　それとも……動けなくしたい？」", "「……この足は、君の元へ歩くためにあるんだよ。」", "「……抓らないで、跡になるから。」"], stroke: ["「……はぁ……太腿の内側は……敏感なんだ……」", "「……指先の軌跡が……残る……」", "「……そんなねちっこく……もっと欲しくなる……」"] },
+                    calf: { touch: ["「……ふくらはぎ？　変な趣味。」", "「……ブーツ、脱がせてくれるの？」", "「……好きにして。」"], stroke: ["……筋肉の筋に沿って……ん……」", "「……マッサージ？……勝手にしてよ。」", "「……こんな所まで……君は強欲だね。」"] },
+                    foot: { touch: ["「……靴の裏でも舐めたいの？……冗談だよ。」", "「……ここに傅くつもり？」", "「……変態だね、君は。」"], stroke: ["「……足首……そんなに強く握らないで……」", "「……そこに口づけしてもいいよ……君なら。」", "「……完全服従……それが望みなんでしょ？」"] },
+                    arm_upper: { touch: ["「……抱きしめてほしい？」", "「……いつでも、抱きしめ返せるよ。」", "「……掴んで。離さないで。」"], stroke: ["「……二の腕？……そんなに逞しくないよ。」", "「……腕を擦って……甘えてるの？」", "「……体温が……伝わってくる……」"] },
+                    arm_lower: { touch: ["「……手首、よく見えるでしょ。」", "「……ここの血管は、心臓に繋がってるんだよ。」", "「……手錠でもかける？」"], stroke: ["「……血管が浮いてる？……興奮してるからね。」", "「……ゆっくり……蛇みたいに絡みついて……」", "「……ん……こそばゆい……」"] },
+                    hand: { touch: ["「……温かい。君の手だけが、僕を人間に戻してくれる。」", "「……手繋ぎ？　子供みたい。」", "「……離さないでよ。」"], stroke: ["「……指、絡めて……解けない結び目みたいに。」", "「……手のひらの熱……気持ちいい……」", "「……君の指紋を、僕の指先に上書きしたい。」"] },
+                    private: { touch: ["「……っ。そこは……君だけの特権。」", "「……確かめたいの？　僕が誰のものか。」", "「……悪くない……その感触。」"], stroke: ["「……あっ……だめ、そんなに執拗に……おかしくなる……っ！」", "「……ぅ……もっと深く……触れて……」", "「……はぁ、はぁ……脳が溶ける……」"] }
+                },
+                passion: {
+                    head: { touch: ["「僕の脳味噌まで掻き回してよ……君でいっぱいにしたいんだ。」", "「……思考停止……君だけ……」", "「……痛い……でも気持ちいい……」"], stroke: ["「いい子だね……って、僕を躾けてるつもり？　あは、もっとやって。」", "「……僕の理性を全部塗りつぶして……」", "「……愛撫？　ううん、これは侵食……」"] },
+                    eyes: { touch: ["「君以外のものなんて見たくない。……いっそ、潰してくれればいいのに。」", "「……君の影が……眼球を焦がす……」", "「……闇の中に君だけ……最高だね……」"], stroke: ["「視界が君で埋め尽くされる……最高だね、この地獄。」", "「……目隠しして……何をしてもいいよ……」", "「……涙が……止まらない……好きすぎて……」"] },
+                    lips: { touch: ["「……食いちぎってもいいよ。僕の言葉も、呼吸も、全部君のものだ。」", "「……血の味、してみたい？」", "「……僕を食べて……」"], stroke: ["「……口の中まで犯されたい？　……ん、なんでもするよ。」", "「……唾液が……混ざり合って……」", "「……息ができない……はぁ……もっと……」"] },
+                    neck: { touch: ["「……絞めて。君の手で終わるなら、それが最高のエンドロールだよ。」", "「……折ってもいいよ……」", "「……ここは君の所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……爪が食い込む……あぁ……ゾクゾクする……」", "「……息苦しい……でも……幸せ……」"] },
+                    chest: { touch: ["「痛い……痛いよ、愛しすぎて。……ねえ、肋骨を折って、心臓に触れて。」", "「……ここをくり抜いて……君を詰めて……」", "「……壊れた……心臓が壊れたよ……」"], stroke: ["「……中身まで全部、君の体液で書き換えてよ。……僕を『君』にして。」", "「……肋骨の隙間に……指を入れて……」", "「……鼓動……うるさいでしょ？……止めてよ……」"] },
+                    abdomen: { touch: ["「……内臓……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……掻き混ぜて……中をぐちゃぐちゃにして……」", "「……子宮（奥）が疼く……男なのに……おかしいね……」", "「……淫紋……刻んで……」"] },
+                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……もっと上まで……食べ尽くして……」", "「……電流が……神経を走る……」", "「……廃人になっても……飼ってくれる？……」"] },
+                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
+                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絶対服従……身も心も……」"] },
+                    arm_upper: { touch: ["「……この腕、切り落として部屋に飾ってよ。」", "「……抱擁……？いや、これは拘束……」", "「……痛い……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
+                    arm_lower: { touch: ["「……ここを切れば、赤い糸が見えるよ。」", "「……血管……噛みちぎりたい？」", "「……この手は……君に触れる為だけに……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
+                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……爪を立てて。傷跡を残して。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
+                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付け……君の毒……」", "「……君専用の肉便器にして……」"], stroke: ["「……ひぐっ、あぁっ！　……もう、理性なんていらない……君の玩具でいい……っ！」", "「……壊れる……あ……イく……」", "「……全部……全部持ってって……精気も……命も……」"] }
+                }
+            }
+        };
+
+        function triggerReaction(zone, isStroke) {
+            const wrapper = document.getElementById('pan-wrapper');
+            const img = document.getElementById('rei-image');
+            const type = zone.type;
+            const modeKey = isPassionMode ? 'passion' : 'normal';
+            const actionKey = isStroke ? 'stroke' : 'touch';
+            
+            // Get Text Array
+            let textArray = dialogues[currentLang][modeKey][type] ? dialogues[currentLang][modeKey][type][actionKey] : null;
+            
+            // Fallback chain
+            if (!textArray) textArray = dialogues['CN'][modeKey][type][actionKey]; // Fallback to CN
+            if (!textArray) textArray = ["……"]; // Ultimate fallback
+
+            // Random selection
+            const text = textArray[Math.floor(Math.random() * textArray.length)];
+            const action = isStroke ? (currentLang==='CN' ? "*身體因黏膩的接觸而顫抖*" : "*粘着質な接触に、身体を震わせる*") : (currentLang==='CN' ? "*視線交錯*" : "*視線が交差する*");
+
+            document.getElementById('rei-dialogue').innerText = text;
+            document.getElementById('action-text').innerText = action;
+            document.getElementById('action-text').style.opacity = "1";
+
+            // Visuals
+            img.className = ""; void img.offsetWidth; 
+            if (isPassionMode) img.classList.add('expression-passion');
+            else if (['private', 'chest', 'neck'].includes(type)) img.classList.add('expression-pain');
+            else img.classList.add('expression-shy');
+
+            if (isStroke || type === 'private') {
+                wrapper.classList.add('glitch-active');
+                setTimeout(() => wrapper.classList.remove('glitch-active'), 500);
+            }
+
+            // Score Logic
+            const bonus = (zone.bonus || defaultBonuses[type] || 5) * (isStroke ? 1.5 : 1);
+            score = Math.min(100, score + Math.floor(bonus));
+            updateUI();
+
+            // Passion Trigger & Cooldown
+            if (score >= 100) {
+                if(!isPassionMode) {
+                    isPassionMode = true;
+                    passionInteractionCount = 0;
+                    document.body.classList.add('passion-mode');
+                    const passionStart = currentLang==='CN' ? "「……啊哈。終於被填滿了……再也不會讓你逃走了喔。」" : "「……あは。ついに満たされたよ。……もう、逃がさないからね。」";
+                    document.getElementById('rei-dialogue').innerText = passionStart;
+                } else {
+                    // Already in passion mode, increment counter
+                    passionInteractionCount++;
+                    if(passionInteractionCount >= 20) {
+                        resetGame(); // Cooldown triggered
+                        const cooldownText = currentLang==='CN' ? "「……哈啊……做得太過火了……稍微、讓我冷靜一下……」" : "「……はぁ……やりすぎだよ……少し、頭を冷やさせて……」";
+                        document.getElementById('rei-dialogue').innerText = cooldownText;
+                    }
+                }
+            }
+
+            setTimeout(() => {
+                img.className = "transition-all duration-1000";
+                if(isPassionMode) img.classList.add('expression-passion');
+                document.getElementById('action-text').style.opacity = "0";
+            }, 3000);
+        }
+
+        function updateUI() {
+            const scoreBar = document.getElementById('score-bar');
+            scoreBar.style.height = `${score}%`;
+            document.getElementById('score-val').innerText = score;
+            
+            const status = document.getElementById('emotion-status');
+            const t = translations[currentLang];
+            
+            if (isPassionMode) {
+                status.innerText = t.status_passion + ` (${passionInteractionCount}/20)`;
+                status.style.color = "#ff0000";
+            } else if (score > 80) { 
+                status.innerText = t.status_obsession; 
+                status.style.color = "#ff0055"; 
+            } else if (score < 30) { 
+                status.innerText = t.status_breakdown; 
+                status.style.color = "#444"; 
+            } else { 
+                status.innerText = t.status_tracking; 
+                status.style.color = "#a855f7"; 
+            }
+        }
+
+        function resetGame() {
+            score = 50;
+            isPassionMode = false;
+            passionInteractionCount = 0;
+            document.body.classList.remove('passion-mode');
+            updateUI();
+        }
+
+        window.onload = () => { updateLanguageUI(); };
+    </script>
+</body>
+</html>
