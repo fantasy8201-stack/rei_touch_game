@@ -465,6 +465,8 @@
         let currentScale = 1.0;
         let currentTranslate = { x: 0, y: 0 };
         let lastTouchDistance = 0;
+        let isZooming = false;
+        let zoomTimeout = null;
         
         // --- GYRO LOGIC ---
         function toggleGyro() {
@@ -498,9 +500,7 @@
             let gamma = event.gamma;
             if(beta === null || gamma === null) return;
 
-            // Map gamma -30..30 to 0..1
             let xPct = (gamma - (-30)) * (1 - 0) / (30 - (-30)) + 0;
-            // Map beta 20..70 to 0..1
             let yPct = (beta - 20) * (1 - 0) / (70 - 20) + 0;
 
             xPct = Math.max(0, Math.min(1, xPct));
@@ -509,16 +509,12 @@
             const c = document.getElementById('game-container');
             const w = document.getElementById('pan-wrapper');
             
-            // Calculate translate values based on scaled size
-            // Effective Width = w.offsetWidth * currentScale
-            // Max Translate = Container Width - Effective Width
             const effW = w.offsetWidth * currentScale;
             const effH = w.offsetHeight * currentScale;
             
             const maxTransX = c.offsetWidth - effW;
             const maxTransY = c.offsetHeight - effH;
             
-            // Allow translating only if content is larger than container
             const targetX = maxTransX < 0 ? maxTransX * xPct : 0;
             const targetY = maxTransY < 0 ? maxTransY * yPct : 0;
             
@@ -527,7 +523,6 @@
         }
         
         // --- ZOOM LOGIC ---
-        // Attach touch listeners to container
         const container = document.getElementById('game-container');
         
         container.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -542,6 +537,8 @@
 
         function handleTouchStart(e) {
             if (e.touches.length === 2) {
+                isZooming = true;
+                if(zoomTimeout) clearTimeout(zoomTimeout);
                 lastTouchDistance = getDistance(e.touches);
                 e.preventDefault();
             }
@@ -552,11 +549,8 @@
                 const dist = getDistance(e.touches);
                 const delta = dist - lastTouchDistance;
                 
-                // Sensitivity
                 const zoomSpeed = 0.005; 
                 let newScale = currentScale + delta * zoomSpeed;
-                
-                // Clamp Scale
                 newScale = Math.max(1.0, Math.min(3.0, newScale));
                 
                 currentScale = newScale;
@@ -568,20 +562,22 @@
         }
         
         function handleTouchEnd(e) {
-            // Cleanup if needed
+            if(e.touches.length < 2) {
+                // Delay re-enabling touch to prevent accidental clicks
+                zoomTimeout = setTimeout(() => {
+                    isZooming = false;
+                }, 300);
+            }
         }
 
         function updateTransform() {
             const w = document.getElementById('pan-wrapper');
-            // Apply both translate and scale
-            // Note: origin is 0 0, so translate moves the scaled element top-left
             w.style.transform = `translate(${currentTranslate.x}px, ${currentTranslate.y}px) scale(${currentScale})`;
         }
 
         // --- MOUSE PAN LOGIC (Modified to support Scale) ---
         function handleContainerMove(e) {
-            if (gyroEnabled || isEditMode || isInteracting) return;
-            // Only pan if not multi-touch (zooming)
+            if (gyroEnabled || isEditMode || isInteracting || isZooming) return;
             
             const c = e.currentTarget;
             const w = document.getElementById('pan-wrapper');
@@ -592,7 +588,6 @@
             if (effW <= c.offsetWidth && effH <= c.offsetHeight) return;
 
             const rect = c.getBoundingClientRect();
-            // Mouse pos 0..1
             const xp = Math.max(0, Math.min(1, (e.clientX-rect.left)/c.offsetWidth));
             const yp = Math.max(0, Math.min(1, (e.clientY-rect.top)/c.offsetHeight));
             
@@ -716,10 +711,7 @@
         }
 
         function startInteraction(e, zone) {
-            if (isEditMode) return;
-            // If zooming (2 fingers), don't trigger interaction
-            if (e.touches && e.touches.length > 1) return;
-            
+            if (isEditMode || isZooming) return;
             e.preventDefault();
             isInteracting = true;
             activeZone = zone;
@@ -771,15 +763,11 @@
         }
         function onDragPoly(e) {
             if (!dragItem) return;
-            e.preventDefault(); // Stop scroll
+            e.preventDefault(); 
             const cx = e.clientX || e.touches[0].clientX;
             const cy = e.clientY || e.touches[0].clientY;
             
             const r = document.getElementById('pan-wrapper').getBoundingClientRect();
-            // Need to account for scale in drag calculation? 
-            // Percent is relative to element size, element size visually scales.
-            // If scale is 2.0, moving 100px visually is 50px in original coordinates?
-            // Actually, getBoundingClientRect returns scaled dimensions. So % calc should be correct automatically.
             
             const dx = ((cx - dragStart.x)/r.width)*100;
             const dy = ((cy - dragStart.y)/r.height)*100;
@@ -1077,17 +1065,17 @@
                 passion: {
                     head: { touch: ["「把我的腦漿攪亂吧……想裝滿你。」", "「……思考停止了……只有你……」", "「……好疼……但是好舒服……」"], stroke: ["「乖孩子……是在調教我嗎？啊哈哈，再來。」", "「……把我的理智全部抹消掉吧……」", "「……撫摸？不，這是侵蝕……」"] },
                     eyes: { touch: ["「除了你什麼都不想看。……乾脆戳瞎好了。」", "「……你的倒影……要把眼球燒壞了。」", "「……黑暗中只有你……太棒了……」"], stroke: ["「視野被你填滿……這是最棒的地獄。」", "「……遮住眼睛……然後做什麼都可以喔……」", "「……眼淚……止不住……因為太愛你了……」"] },
-                    lips: { touch: ["「……食いちぎってもいいよ。僕の言葉も、呼吸も、全部君のものだ。」", "「……血の味、してみたい？」", "「……僕を食べて……」"], stroke: ["「……口の中まで犯されたい？　……ん、なんでもするよ。」", "「……唾液が……混ざり合って……」", "「……息ができない……はぁ……もっと……」"] },
-                    neck: { touch: ["「……絞めて。君の手で終わるなら、それが最高のエンドロールだよ。」", "「……折ってもいいよ……」", "「……ここは君の所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……爪が食い込む……あぁ……ゾクゾクする……」", "「……息苦しい……でも……幸せ……」"] },
-                    chest: { touch: ["「痛い……痛いよ、愛しすぎて。……ねえ、肋骨を折って、心臓に触れて。」", "「……ここをくり抜いて……君を詰めて……」", "「……壊れた……心臓が壊れたよ……」"], stroke: ["「……中身まで全部、君の体液で書き換えてよ。……僕を『君』にして。」", "「……肋骨の隙間に……指を入れて……」", "「……鼓動……うるさいでしょ？……止めてよ……」"] },
-                    abdomen: { touch: ["「……内臓……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……掻き混ぜて……中をぐちゃぐちゃにして……」", "「……子宮（奥）が疼く……男なのに……おかしいね……」", "「……淫紋……刻んで……」"] },
-                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……もっと上まで……食べ尽くして……」", "「……電流が……神経を走る……」", "「……廃人になっても……飼ってくれる？……」"] },
-                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
-                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絶対服従……身も心も……」"] },
-                    arm_upper: { touch: ["「……この腕、切り落として部屋に飾ってよ。」", "「……抱擁……？いや、これは拘束……」", "「……痛い……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
-                    arm_lower: { touch: ["「……ここを切れば、赤い糸が見えるよ。」", "「……血管……噛みちぎりたい？」", "「……この手は……君に触れる為だけに……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
-                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
-                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
+                    lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
+                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……留下痕跡。讓誰都看得出我是你的東西。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
+                    chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
+                    abdomen: { touch: ["「……內臟……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
+                    thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
+                    calf: { touch: ["「……切斷跟腱也可以喔……這樣就逃不掉了。」", "「……無法站立的玩偶……那就是我……」", "「……隨你處置……」"], stroke: ["「……像蛇一樣爬上來……你的慾望……」", "「……肌肉在抽搐……感受到了嗎？……」", "「……更加……凌辱我……」"] },
+                    foot: { touch: ["「……舔你的鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……腳尖都在發抖……快瘋了……」", "「……鎖鏈的聲音……聽見了嗎？……」", "「……絕對服從……身心都是……」"] },
+                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["「……指甲……抓破皮膚……血的味道……」", "「……把你刻在我的肉體上……」", "「……束縛帶……還不夠緊……」"] },
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……啊……血在逆流……」", "「……手腕……折斷也可以……」", "「……已經……動不了了……」"] },
+                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
+                    private: { touch: ["「……啊哈♡　更多、更多破壞我……除了你什麼都感覺不到！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
                 }
             },
             JP: {
