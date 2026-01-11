@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>曉月 零的觀測室 - Gyro & Zoom Ver.</title>
+    <title>曉月 零的觀測室 - Gyro & Zoom Ver. (Integrity Patched)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
@@ -409,7 +409,7 @@
                 scan_start: "正在啟動多邊形骨骼偵測...", scan_success: "掃描完成。已生成向量多邊形。",
                 scan_fail: "掃描失敗：無法辨識或權限受限。", scan_no_face: "未檢測到臉部或身體，請使用清晰全身/半身照。",
                 scan_cors_error: "錯誤：請先點擊 [讀取圖片] 上傳您自己的 JPG/PNG 檔案。", save_success: "存檔成功！Rei 已被保存。",
-                load_success: "讀檔成功！設定已還原。", load_fail: "無存檔紀錄。"
+                load_success: "讀檔成功！設定已還原，缺漏部分已修補。", load_fail: "無存檔紀錄。"
             },
             JP: {
                 load: "[ 画像読込 ]", admin: "[ 管理モード ]", play: "[ 観測開始 ]", synch: "SYNCH", backend: "バックエンド制御",
@@ -425,7 +425,7 @@
                 scan_start: "骨格検出を開始します...", scan_success: "スキャン完了。ポリゴンを生成しました。",
                 scan_fail: "スキャン失敗: 認識不可または権限エラー。", scan_no_face: "顔または体を検出できません。鮮明な画像を使用してください。",
                 scan_cors_error: "エラー: 先に [画像読込] からJPG/PNGをアップロードしてください。", save_success: "保存完了。Reiは記録されました。",
-                load_success: "読込完了。設定を復元しました。", load_fail: "保存データがありません。"
+                load_success: "読込完了。設定を復元し、不足分を補完しました。", load_fail: "保存データがありません。"
             },
             EN: {
                 load: "[ LOAD IMAGE ]", admin: "[ ADMIN MODE ]", play: "[ START ]", synch: "SYNCH", backend: "BACKEND CONTROL",
@@ -441,7 +441,7 @@
                 scan_start: "INITIATING POLYGON SKELETON TRACKING...", scan_success: "SCAN COMPLETE. POLYGONS GENERATED.",
                 scan_fail: "SCAN FAILED: PERMISSION OR ERROR.", scan_no_face: "NO FACE/BODY DETECTED.",
                 scan_cors_error: "ERROR: Please [LOAD IMAGE] first.", save_success: "SAVED.",
-                load_success: "LOADED.", load_fail: "NO DATA FOUND."
+                load_success: "LOADED & PATCHED.", load_fail: "NO DATA FOUND."
             }
         };
 
@@ -584,9 +584,10 @@
             w.style.transform = `translate(${currentTranslate.x}px, ${currentTranslate.y}px) scale(${currentScale})`;
         }
 
-        // --- MOUSE PAN LOGIC (Modified to support Scale) ---
+        // --- MOUSE PAN LOGIC (Modified to support Scale & Admin Mode) ---
         function handleContainerMove(e) {
-            if (gyroEnabled || isEditMode || isInteracting || isZooming) return;
+            // UPDATED: Allow panning in edit mode, UNLESS dragging an item or vertex
+            if (gyroEnabled || (isEditMode && (dragItem || dragV)) || isInteracting || isZooming) return;
             
             const c = e.currentTarget;
             const w = document.getElementById('pan-wrapper');
@@ -690,6 +691,19 @@
             a.href = url; a.download = `rei_config_${Date.now()}.json`; a.click();
             URL.revokeObjectURL(url);
         }
+        
+        function loadCustomImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                BASE_IMAGE = e.target.result;
+                document.getElementById('rei-image').src = BASE_IMAGE;
+                isDefaultImage = false;
+                showToast("圖片讀取成功 (Image Loaded)");
+            };
+            reader.readAsDataURL(file);
+        }
 
         function importData(event) {
             const file = event.target.files[0];
@@ -707,7 +721,27 @@
 
         function applyData(data) {
             if (data.image) { BASE_IMAGE = data.image; document.getElementById('rei-image').src = BASE_IMAGE; }
-            if (data.hitboxes) { hitboxes = data.hitboxes; }
+            
+            let newHitboxes = data.hitboxes || [];
+            const existingTypes = new Set(newHitboxes.map(z => z.type));
+            let maxId = newHitboxes.length > 0 ? Math.max(...newHitboxes.map(z => z.id)) : 0;
+            
+            zoneKeys.forEach(key => {
+                if(!existingTypes.has(key)) {
+                    maxId++;
+                    newHitboxes.push({
+                        id: maxId,
+                        type: key,
+                        bonus: defaultBonuses[key] || 5,
+                        points: [
+                            {x: 45, y: 45}, {x: 55, y: 45}, 
+                            {x: 55, y: 55}, {x: 45, y: 55}
+                        ]
+                    });
+                }
+            });
+            hitboxes = newHitboxes;
+            
             if (data.isDefaultImage !== undefined) { isDefaultImage = data.isDefaultImage; }
             renderHitboxes();
         }
@@ -735,7 +769,6 @@
         }
 
         function endInteraction(e) {
-            // Safety check: if zooming, ignore
             if (!isInteracting || !activeZone || isZooming) {
                 isInteracting = false;
                 activeZone = null;
@@ -934,11 +967,23 @@
                             newHitboxes.push({id:idCounter++, type:'arm_lower', bonus: defaultBonuses.arm_lower, points:getPoly(re,rw,0.3)});
                             newHitboxes.push({id:idCounter++, type:'hand', bonus: defaultBonuses.hand, points:toPctBox({x:rw.position.x-20, y:rw.position.y-20, width:40, height:40})});
                         }
-                        if(ls.score>C && lh.score>C && rh.score>C) {
-                            newHitboxes.push({id:idCounter++, type:'chest', bonus: defaultBonuses.chest, points: [toPct(ls.position), toPct(rs.position), toPct(rh.position), toPct(lh.position)]});
+                        
+                        // UPDATED: Split Chest and Abdomen logic
+                        if(ls.score>C && rs.score>C && lh.score>C && rh.score>C) {
+                            const ml = { x: (ls.position.x + lh.position.x)/2, y: (ls.position.y + lh.position.y)/2 };
+                            const mr = { x: (rs.position.x + rh.position.x)/2, y: (rs.position.y + rh.position.y)/2 };
+                            
+                            // Chest
+                            newHitboxes.push({id:idCounter++, type:'chest', bonus: defaultBonuses.chest, points: [toPct(ls.position), toPct(rs.position), toPct(mr), toPct(ml)]});
+                            
+                            // Abdomen
+                            newHitboxes.push({id:idCounter++, type:'abdomen', bonus: defaultBonuses.abdomen, points: [toPct(ml), toPct(mr), toPct(rh.position), toPct(lh.position)]});
+
+                            // Private
                             const hx = (lh.position.x+rh.position.x)/2, hy = (lh.position.y+rh.position.y)/2;
                             newHitboxes.push({id:idCounter++, type:'private', bonus: defaultBonuses.private, points: toPctBox({x:hx-30, y:hy, width:60, height:50})});
                         }
+
                         if(lh.score>C && lk.score>C) newHitboxes.push({id:idCounter++, type:'thigh', bonus: defaultBonuses.thigh, points:getPoly(lh,lk,0.5)});
                         if(rh.score>C && rk.score>C) newHitboxes.push({id:idCounter++, type:'thigh', bonus: defaultBonuses.thigh, points:getPoly(rh,rk,0.5)});
                         
@@ -1081,17 +1126,17 @@
                 passion: {
                     head: { touch: ["「把我的腦漿攪亂吧……想裝滿你。」", "「……思考停止了……只有你……」", "「……好疼……但是好舒服……」"], stroke: ["「乖孩子……是在調教我嗎？啊哈哈，再來。」", "「……把我的理智全部抹消掉吧……」", "「……撫摸？不，這是侵蝕……」"] },
                     eyes: { touch: ["「除了你什麼都不想看。……乾脆戳瞎好了。」", "「……你的倒影……要把眼球燒壞了。」", "「……黑暗中只有你……太棒了……」"], stroke: ["「視野被你填滿……這是最棒的地獄。」", "「……遮住眼睛……然後做什麼都可以喔……」", "「……眼淚……止不住……因為太愛你了……」"] },
-                    lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……無法呼吸……哈啊……更多……」"] },
-                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……留下痕跡。讓誰都看得出我是你的東西。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
+                    lips: { touch: ["「……咬下來也可以喔。話語、呼吸，全是你的。」", "「……想嘗嘗血的味道嗎？」", "「……吃掉我……」"], stroke: ["「……連口腔裡面都想侵犯？……嗯，什麼都依你。」", "「……唾液……混合在一起……」", "「……息ができない……はぁ……もっと……」"] },
+                    neck: { touch: ["「……勒緊我。若是死在你手裡，那就是最棒的結局。」", "「……折斷也可以喔……」", "「……這裡是你的所有物……」"], stroke: ["「……痕をつけて。誰が見ても、僕が君の所有物だってわかるように。」", "「……指甲陷入肉裡……啊……好興奮……」", "「……呼吸困難……但是……好開心……」"] },
                     chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
-                    abdomen: { touch: ["「……內臟……會壞掉的喔……」", "「……好熱……肚子裡像有火在燒……」", "「……貫穿我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……深處在疼……明明是男的……真奇怪呢……」", "「……刻上淫紋也可以喔……」"] },
+                    abdomen: { touch: ["「……內臟……會壞掉的喔……」", "「……好熱……肚子裡像有火在燒……」", "「……貫穿我……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（奥）が疼く……男なのに……おかしいね……」", "「……刻上淫紋也可以喔……」"] },
                     thigh: { touch: ["「……只要打斷腿，就哪裡也去不了了呢……好啊，敲碎吧。」", "「……這雙腿只為你張開……」", "「……顫抖……停不下來……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
-                    calf: { touch: ["「……挑斷阿基里斯腱也可以喔……這樣就逃不掉了。」", "「……無法站立的人偶……那就是我……」", "「……要殺要剮隨你便……」"], stroke: ["「……像蛇一樣爬上來了……你的慾望……」", "「……肌肉在抽搐……感覺到了嗎？……」", "「……再更多……凌辱我……」"] },
-                    foot: { touch: ["「……舔鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……連腳尖都麻痺了……要瘋了……」", "「……鎖鏈的聲音……聽到了嗎？……」", "「……絕對服従……身心都是……」"] },
-                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["「……用指甲……撕裂皮膚……血的味道……」", "「……把你刻在肉體上……」", "「……拘束具……再緊一點……」"] },
-                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……啊……血液逆流了……」", "「……手腕……折斷也可以喔……」", "「……已經……動不了了……」"] },
-                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化黏在一起了……」", "「……永遠……不分開……」"] },
-                    private: { touch: ["「……啊哈♡　更多、更多地破壞我……讓我除了你以外，什麼都感覺不到！」", "「……播種……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
+                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……像蛇一樣爬上來了……你的慾望……」", "「……肌肉在抽搐……感覺到了嗎？……」", "「……再更多……凌辱我……」"] },
+                    foot: { touch: ["「……舔鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖鏈的聲音……聽到了嗎？……」", "「……絕對服従……身心都是……」"] },
+                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
+                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……爪を立てて。傷跡を残して。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
+                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付け……君の毒……」", "「……君専用の肉便器にして……」"], stroke: ["「……ひぐっ、あぁっ！　……もう、理性なんていらない……君の玩具でいい……っ！」", "「……壊れる……あ……イく……」", "「……全部……全部持ってって……精気も……命も……」"] }
                 }
             },
             JP: {
@@ -1118,8 +1163,8 @@
                     chest: { touch: ["「痛い……痛いよ、愛しすぎて。……ねえ、肋骨を折って、心臓に触れて。」", "「……ここをくり抜いて……君を詰めて……」", "「……壊れた……心臓が壊れたよ……」"], stroke: ["「……中身まで全部、君の体液で書き換えてよ。……僕を『君』にして。」", "「……肋骨の隙間に……指を入れて……」", "「……鼓動……うるさいでしょ？……止めてよ……」"] },
                     abdomen: { touch: ["「……内臓……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……掻き混ぜて……中をぐちゃぐちゃにして……」", "「……子宮（奥）が疼く……男なのに……おかしいね……」", "「……淫紋……刻んで……」"] },
                     thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……もっと上まで……食べ尽くして……」", "「……電流が……神経を走る……」", "「……廃人になっても……飼ってくれる？……」"] },
-                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
-                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絶対服従……身も心も……」"] },
+                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……像蛇一樣爬上來了……你的慾望……」", "「……肌肉在抽搐……感覺到了嗎？……」", "「……再更多……凌辱我……」"] },
+                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖鏈的聲音……聽到了嗎？……」", "「……絕對服従……身心都是……」"] },
                     arm_upper: { touch: ["「……この腕、切り落として部屋に飾ってよ。」", "「……抱擁……？いや、これは拘束……」", "「……痛い……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
                     arm_lower: { touch: ["「……ここを切れば、赤い糸が見えるよ。」", "「……血管……噛みちぎりたい？」", "「……この手は……君に触れる為だけに……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
                     hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……爪を立てて。傷跡を残して。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
