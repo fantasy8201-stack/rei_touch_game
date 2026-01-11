@@ -538,6 +538,15 @@
         function handleTouchStart(e) {
             if (e.touches.length === 2) {
                 isZooming = true;
+                
+                // Cancel ongoing interaction to prevent conflict
+                if (isInteracting) {
+                    isInteracting = false;
+                    activeZone = null;
+                    document.removeEventListener('mouseup', endInteraction);
+                    document.removeEventListener('touchend', endInteraction);
+                }
+
                 if(zoomTimeout) clearTimeout(zoomTimeout);
                 lastTouchDistance = getDistance(e.touches);
                 e.preventDefault();
@@ -726,7 +735,14 @@
         }
 
         function endInteraction(e) {
-            if (!isInteracting || !activeZone) return;
+            // Safety check: if zooming, ignore
+            if (!isInteracting || !activeZone || isZooming) {
+                isInteracting = false;
+                activeZone = null;
+                document.removeEventListener('mouseup', endInteraction);
+                document.removeEventListener('touchend', endInteraction);
+                return;
+            }
             
             const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
             const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
@@ -1070,12 +1086,12 @@
                     chest: { touch: ["「痛……好痛，愛得好痛。……吶，折斷肋骨，摸摸心臟吧。」", "「……把這裡挖空……填滿你……」", "「……壞掉了……心臟壞掉了……」"], stroke: ["「……連內在都用你的體液改寫吧。……把我變成『你』。」", "「……肋骨的縫隙……手指插進來……」", "「……心跳聲……吵死了對吧？……讓它停下來吧……」"] },
                     abdomen: { touch: ["「……內臟……腐っちゃうよ……」", "「……熱い……お腹の中に火が……」", "「……貫いて……」"], stroke: ["「……攪拌吧……把我裡面弄得一團糟……」", "「……子宮（深處）在疼……明明是男的……好奇怪……」", "「……刻上淫紋也可以喔……」"] },
                     thigh: { touch: ["「……足なんて折れば、どこにも行けないね……いいよ、砕いて。」", "「……この脚は君の為だけに開く……」", "「……震えが……止まらない……」"], stroke: ["「……再往上……把我吃乾抹淨……」", "「……電流……竄過神經……」", "「……即使變成廢人……你也願意養我嗎？……」"] },
-                    calf: { touch: ["「……切斷跟腱也可以喔……這樣就逃不掉了。」", "「……無法站立的玩偶……那就是我……」", "「……隨你處置……」"], stroke: ["「……像蛇一樣爬上來……你的慾望……」", "「……肌肉在抽搐……感受到了嗎？……」", "「……更加……凌辱我……」"] },
-                    foot: { touch: ["「……舔你的鞋子？……啊哈哈，我很樂意。」", "「……踩我……用力踩碎我……」", "「……我是你的狗……汪……」"], stroke: ["「……腳尖都在發抖……快瘋了……」", "「……鎖鏈的聲音……聽見了嗎？……」", "「……絕對服從……身心都是……」"] },
-                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["「……指甲……抓破皮膚……血的味道……」", "「……把你刻在我的肉體上……」", "「……束縛帶……還不夠緊……」"] },
-                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……啊……血在逆流……」", "「……手腕……折斷也可以……」", "「……已經……動不了了……」"] },
+                    calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
+                    foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絕對服従……身も心も……」"] },
+                    arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
                     hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
-                    private: { touch: ["「……啊哈♡　更多、更多破壞我……除了你什麼都感覺不到！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
+                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
                 }
             },
             JP: {
