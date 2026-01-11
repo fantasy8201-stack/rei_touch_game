@@ -579,9 +579,43 @@
             }
         }
 
+        // --- FIXED: updateTransform with Bounds Clamping ---
         function updateTransform() {
-            const w = document.getElementById('pan-wrapper');
-            w.style.transform = `translate(${currentTranslate.x}px, ${currentTranslate.y}px) scale(${currentScale})`;
+            const container = document.getElementById('game-container');
+            const wrapper = document.getElementById('pan-wrapper');
+            
+            if(!container || !wrapper) return;
+
+            // Recalculate effective dimensions based on current scale
+            const effW = wrapper.offsetWidth * currentScale;
+            const effH = wrapper.offsetHeight * currentScale;
+            
+            // Calculate boundaries (negative values or 0)
+            // minX is the farthest left we can pan (showing the right edge of image)
+            // maxX is 0 (showing left edge of image)
+            const minX = container.offsetWidth - effW;
+            const minY = container.offsetHeight - effH;
+            
+            // If the image is somehow smaller than container (unlikely with min-width 100%), 
+            // clamp to 0.
+            const maxX = 0;
+            const maxY = 0;
+            
+            let x = currentTranslate.x;
+            let y = currentTranslate.y;
+            
+            // Apply Constraints: Stop at the last allowed value (clamping)
+            if (x < minX) x = minX;
+            if (x > maxX) x = maxX;
+            
+            if (y < minY) y = minY;
+            if (y > maxY) y = maxY;
+            
+            // Update state to prevent drift and ensure consistency
+            currentTranslate.x = x;
+            currentTranslate.y = y;
+
+            wrapper.style.transform = `translate(${x}px, ${y}px) scale(${currentScale})`;
         }
 
         // --- MOUSE PAN LOGIC (Modified to support Scale) ---
@@ -1089,9 +1123,9 @@
                     calf: { touch: ["……アキレス腱、切ってもいいよ……逃げられないように。」", "「……立てない人形……それが僕……」", "「……煮るなり焼くなり……」"], stroke: ["「……蛇みたいに這い上がってくる……君の欲望……」", "「……筋肉が引き攣る……感じる？……」", "「……もっと……陵辱して……」"] },
                     foot: { touch: ["「……靴舐め？……あはは、喜んで。」", "「……踏んで……思い切り踏み潰して……」", "「……僕は君の犬……わん……」"], stroke: ["「……爪先まで痺れてる……狂っちゃう……」", "「……鎖の音……聞こえる？……」", "「……絕對服従……身も心も……」"] },
                     arm_upper: { touch: ["「……把這雙手砍下來裝飾在房間裡吧。」", "「……擁抱……？不，這是拘束……」", "「……好痛……」"], stroke: ["……爪で……皮膚を裂いて……血の匂い……」", "「……君を肉体に刻み込んで……」", "「……拘束具……もっときつく……」"] },
-                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……想咬斷嗎？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
-                    hand: { touch: ["「……不需要手銬。用螺絲把我們的骨頭固定在一起吧。」", "「……融合在一起……」", "「……指甲剝下來送給你……」"], stroke: ["「……指甲豎起來。留下傷痕。……想要你觸碰過的證據。」", "「……手指……融化粘在一起……」", "「……永遠……離不開……」"] },
-                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……變成你的專用肉便器……」"], stroke: ["「……嗚咕、啊啊っ！ ……已經、不需要理智了……當你的玩具就好……っ！」", "「……壞掉了……啊……去了……」", "「……全部……全部拿走……精氣也……命也……」"] }
+                    arm_lower: { touch: ["「……割開這裡，就能看到紅色的線了。」", "「……血管……噛みちぎりたい？」", "「……這雙手……只為了觸碰你……」"], stroke: ["「……あぁ……血が逆流する……」", "「……手首……折ってもいいよ……」", "「……もう……動けない……」"] },
+                    hand: { touch: ["「……手錠なんていらない。君の骨と僕の骨を、ボルトで固定したいな。」", "「……融合して……」", "「……爪を剥いで、君にあげる……」"], stroke: ["「……指甲豎起來。留下傷痕。……君が僕に触れた証拠が欲しい。」", "「……指が……溶けてくっつく……」", "「……永遠に……離れない……」"] },
+                    private: { touch: ["「……あは♡　もっと、もっと壊して……君以外、何も感じられないようにして！」", "「……種付……你的毒……」", "「……君専用の肉便器にして……」"], stroke: ["「……ひぐっ、あぁっ！　……もう、理性なんていらない……君の玩具でいい……っ！」", "「……壊れる……あ……イく……」", "「……全部……全部持ってって……精気も……命も……」"] }
                 }
             },
             JP: {
